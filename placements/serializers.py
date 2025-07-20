@@ -104,7 +104,7 @@ class PlacementStatisticsSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlacementStatistics
         fields = [
-            'id', 'academic_year', 'batch_year', 'branch', 'total_students',
+            'id', 'academic_year', 'batch_year', 'total_students',
             'total_placed', 'highest_package', 'average_package', 'median_package',
             'total_companies_visited', 'total_offers', 'placement_percentage',
             'created_at', 'updated_at'
@@ -158,7 +158,7 @@ class PlacedStudentSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlacedStudent
         fields = [
-            'id', 'student_name', 'student_email', 'roll_number', 'branch',
+            'id', 'student_name', 'student_email', 'roll_number',
             'batch_year', 'cgpa', 'company', 'company_details', 'placement_drive',
             'job_title', 'package_lpa', 'package_details', 'work_location',
             'job_type', 'offer_date', 'joining_date', 'offer_letter',
@@ -178,7 +178,7 @@ class PlacedStudentListSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlacedStudent
         fields = [
-            'id', 'student_name', 'branch', 'batch_year', 'cgpa',
+            'id', 'student_name', 'batch_year', 'cgpa',
             'company_name', 'company_logo', 'job_title', 'package_lpa',
             'work_location', 'job_type', 'job_type_display', 'offer_date',
             'is_verified', 'created_at'
