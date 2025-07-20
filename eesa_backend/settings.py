@@ -26,7 +26,7 @@ else:
 if not DEBUG:
     ALLOWED_HOSTS.extend([
         '*.onrender.com',
-        'backend-3nct.onrender.com',  # Your specific domain
+        'eesabackend.onrender.com',  # Your specific domain
         '*.railway.app',
         '*.herokuapp.com',
         'localhost',
