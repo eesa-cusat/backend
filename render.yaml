@@ -1,0 +1,42 @@
+services:
+  # Django Web Service
+  - type: web
+    name: eesa-college-portal
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    buildFilter:
+      paths:
+        - requirements.txt
+        - Dockerfile
+        - .dockerignore
+        - eesa_backend/**
+        - accounts/**
+        - academics/**
+        - alumni/**
+        - careers/**
+        - events/**
+        - gallery/**
+        - placements/**
+        - projects/**
+        - manage.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: ALLOWED_HOSTS
+        value: "*"
+      - key: DATABASE_URL
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
