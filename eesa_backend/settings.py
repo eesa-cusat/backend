@@ -211,22 +211,13 @@ import os
 
 # CORS Origins based on environment
 if DEBUG:
-    # Development CORS settings
-    CORS_ALLOWED_ORIGINS = [
-        'http://localhost:3000',
-        'http://127.0.0.1:3000',
-        'http://localhost:5173',
-        'http://127.0.0.1:5173',
-    ]
+    # Development CORS settings from environment or empty list
+    dev_cors = os.environ.get('DEV_CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173')
+    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in dev_cors.split(',') if origin.strip()]
 else:
-    # Production CORS settings - get from environment or use default
+    # Production CORS settings - must be set in environment
     cors_origins = os.environ.get('CORS_ALLOWED_ORIGINS', '')
-    if cors_origins:
-        CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
-    else:
-        CORS_ALLOWED_ORIGINS = [
-            'https://forntend-nine.vercel.app',  # Default production frontend
-        ]
+    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
     
     # Debug CORS settings in production (only if needed)
     if os.environ.get('DEBUG_SETTINGS', 'False').lower() == 'true':
