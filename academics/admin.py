@@ -3,7 +3,7 @@ from django.utils.html import format_html
 from django.urls import reverse
 from django.http import HttpResponseRedirect
 from django.contrib import messages
-from .models import Scheme, Subject, AcademicCategory, AcademicResource
+from .models import Scheme, Subject, AcademicResource
 
 
 @admin.register(Scheme)
@@ -74,7 +74,7 @@ class AcademicResourceAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         """Show unverified notes first"""
         qs = super().get_queryset(request)
-        return qs.select_related('subject', 'subject__scheme', 'category', 'uploaded_by').order_by('is_approved', '-created_at')
+        return qs.select_related('subject', 'subject__scheme', 'uploaded_by').order_by('is_approved', '-created_at')
     
     def approve_selected_resources(self, request, queryset):
         """Admin action to approve selected resources"""
@@ -94,8 +94,4 @@ class AcademicResourceAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
 
 
-@admin.register(AcademicCategory)
-class AcademicCategoryAdmin(admin.ModelAdmin):
-    list_display = ['name', 'category_type', 'is_active', 'display_order']
-    list_editable = ['is_active', 'display_order']
-    search_fields = ['name', 'category_type']
+# AcademicCategory is not registered in admin, so it will not appear in the admin panel.

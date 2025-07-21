@@ -11,7 +11,7 @@ from rest_framework import status
 import os
 import json
 
-from .models import Scheme, Subject, AcademicCategory, AcademicResource
+from .models import Scheme, Subject, AcademicResource
 
 
 @api_view(['GET'])
@@ -143,9 +143,7 @@ def category_detail(request, category_type):
 @permission_classes([])  # Remove authentication requirement
 def academic_resources_list(request):
     """List academic resources with filtering"""
-    resources = AcademicResource.objects.filter(is_approved=True).select_related(
-        'category', 'subject', 'uploaded_by'
-    )
+    resources = AcademicResource.objects.filter(is_approved=True).select_related('subject', 'uploaded_by')
     
     # Filter by category type
     category_type = request.GET.get('category_type')
@@ -202,9 +200,7 @@ def unverified_notes(request):
     if not request.user.is_staff:
         return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
     
-    resources = AcademicResource.objects.filter(is_approved=False).select_related(
-        'category', 'subject', 'uploaded_by'
-    ).order_by('-created_at')
+    resources = AcademicResource.objects.filter(is_approved=False).select_related('subject', 'uploaded_by').order_by('-created_at')
     
     resources_data = []
     for resource in resources:

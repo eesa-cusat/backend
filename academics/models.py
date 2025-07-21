@@ -54,59 +54,18 @@ class Subject(models.Model):
         return self.scheme.year
 
 
-class AcademicCategory(models.Model):
-    """Fixed categories for academic resources - only 3 types needed"""
-    
-    CATEGORY_TYPES = [
-        ('notes', 'Notes'),
-        ('textbook', 'Textbooks'),
-        ('pyq', 'Previous Year Questions'),
-        ('regulations', 'Regulations'),
-        ('syllabus', 'Syllabus'),
-    ]
-    
-    name = models.CharField(max_length=100)
-    slug = models.SlugField(max_length=100, unique=True)
-    category_type = models.CharField(max_length=20, choices=CATEGORY_TYPES)
-    description = models.TextField(blank=True)
-    icon = models.CharField(max_length=50, blank=True, help_text="Icon class name")
-    is_active = models.BooleanField(default=True)
-    display_order = models.IntegerField(default=0)
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        verbose_name_plural = "Academic Categories"
-        ordering = ['display_order', 'name']
-        
-    def __str__(self):
-        return f"{self.get_category_type_display()}"
-    
-    def save(self, *args, **kwargs):
-        """Ensure only 5 categories exist"""
-        if not self.pk:  # Only for new instances
-            if self.category_type == 'notes':
-                self.name = 'Notes'
-                self.slug = 'notes'
-            elif self.category_type == 'textbook':
-                self.name = 'Textbooks'
-                self.slug = 'textbooks'
-            elif self.category_type == 'pyq':
-                self.name = 'Previous Year Questions'
-                self.slug = 'pyq'
-            elif self.category_type == 'regulations':
-                self.name = 'Regulations'
-                self.slug = 'regulations'
-            elif self.category_type == 'syllabus':
-                self.name = 'Syllabus'
-                self.slug = 'syllabus'
-        super().save(*args, **kwargs)
-
+# Hardcoded academic categories
+ACADEMIC_CATEGORIES = [
+    ('notes', 'Notes'),
+    ('textbook', 'Textbooks'),
+    ('pyq', 'Previous Year Questions'),
+    ('regulations', 'Regulations'),
+    ('syllabus', 'Syllabus'),
+]
 
 def academic_resource_upload_path(instance, filename):
     """Generate upload path for academic resources"""
-    return f"academics/{instance.category.category_type}/{instance.subject.scheme.year}/{instance.subject.semester}/{instance.subject.code}/{filename}"
+    return f"academics/{instance.category}/{instance.subject.scheme.year}/{instance.subject.semester}/{instance.subject.code}/{filename}"
 
 
 class AcademicResource(models.Model):
@@ -130,7 +89,7 @@ class AcademicResource(models.Model):
     # Basic Information
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    category = models.ForeignKey(AcademicCategory, on_delete=models.CASCADE, related_name='resources')
+    category = models.CharField(max_length=20, choices=ACADEMIC_CATEGORIES)
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='resources')
     
     # File Information
@@ -212,11 +171,11 @@ class AcademicResource(models.Model):
     
     def __str__(self):
         status = "✓" if self.is_approved else "⏳"
-        category_name = self.category.get_category_type_display()
+        category_name = self.category
         
-        if self.category.category_type == 'notes' and self.module_number > 0:
+        if self.category == 'notes' and self.module_number > 0:
             return f"{status} {self.title} - {self.subject.name} (Module {self.module_number})"
-        elif self.category.category_type == 'pyq' and self.exam_year:
+        elif self.category == 'pyq' and self.exam_year:
             return f"{status} {self.title} - {self.subject.name} ({self.exam_year} {self.get_exam_type_display()})"
         else:
             return f"{status} {self.title} - {self.subject.name}"
