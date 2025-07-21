@@ -92,3 +92,10 @@ class AcademicResourceAdmin(admin.ModelAdmin):
         if not change:  # If creating new object
             obj.uploaded_by = request.user
         super().save_model(request, obj, form, change)
+
+
+@admin.register(AcademicCategory)
+class AcademicCategoryAdmin(admin.ModelAdmin):
+    list_display = ['name', 'category_type', 'is_active', 'display_order']
+    list_editable = ['is_active', 'display_order']
+    search_fields = ['name', 'category_type']
