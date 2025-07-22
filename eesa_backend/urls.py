@@ -40,6 +40,7 @@ urlpatterns = [
     path('api/careers/', include('careers.urls')),
     path('api/gallery/', include('gallery.urls')),
     path('api/alumni/', include('alumni.urls')),
+    path('api/accounts/', include('accounts.urls')),
 ]
 
 # Add JWT endpoints if available
