@@ -53,11 +53,13 @@ class JobOpportunity(models.Model):
 
 class InternshipOpportunity(models.Model):
     DURATION_CHOICES = [
+        ('less_than_month', 'Less than a month'),
         ('1_month', '1 Month'),
         ('2_months', '2 Months'), 
         ('3_months', '3 Months'),
         ('6_months', '6 Months'),
         ('1_year', '1 Year'),
+        ('other', 'Other'),
     ]
     
     INTERNSHIP_TYPES = [

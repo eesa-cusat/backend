@@ -112,7 +112,7 @@ class PlacementDrive(models.Model):
     application_link = models.URLField(default="https://example.com/apply", help_text="Link for students to apply for this placement drive")
     
     # Requirements documents
-    required_documents = models.JSONField(default=list, help_text="List of required documents")
+    required_documents = models.TextField(blank=True, help_text="List of required documents, one per line")
     additional_info = models.TextField(blank=True)
     
     # Status
