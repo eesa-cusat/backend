@@ -25,6 +25,7 @@ FROM python:3.11-slim as production
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
+ENV DEBUG False
 
 # Install runtime dependencies only
 RUN apt-get update \
@@ -44,20 +45,34 @@ WORKDIR /app
 # Copy project (cache this layer separately)
 COPY . /app/
 
+# Create necessary directories
+RUN mkdir -p /app/staticfiles /app/media
+
 # Change ownership to django user
 RUN chown -R django:django /app
 
 # Switch to django user
 USER django
 
-# Collect static files (cache this layer)
-RUN python manage.py collectstatic --noinput
+# Create startup script with proper environment handling
+RUN echo '#!/bin/bash\n\
+# Run migrations\n\
+python manage.py migrate --noinput\n\
+\n\
+# Collect static files if Cloudinary is configured\n\
+if [ -n "$CLOUDINARY_CLOUD_NAME" ] && [ -n "$CLOUDINARY_API_KEY" ] && [ -n "$CLOUDINARY_API_SECRET" ]; then\n\
+    echo "Collecting static files..."\n\
+    python manage.py collectstatic --noinput\n\
+else\n\
+    echo "Skipping collectstatic (Cloudinary not configured)"\n\
+fi\n\
+\n\
+# Start Gunicorn\n\
+exec gunicorn eesa_backend.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 2 --timeout 120\n\
+' > /app/start.sh && chmod +x /app/start.sh
 
 # Expose port (will be overridden by Render)
 EXPOSE 8000
-
-# Create startup script
-RUN echo '#!/bin/bash\npython manage.py migrate --noinput\nexec gunicorn eesa_backend.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 2 --timeout 120' > /app/start.sh && chmod +x /app/start.sh
 
 # Start Gunicorn server
 CMD ["/app/start.sh"] 
