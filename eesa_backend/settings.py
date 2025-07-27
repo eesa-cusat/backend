@@ -250,3 +250,17 @@ CORS_ALLOW_HEADERS = [
 ADMIN_SITE_HEADER = "EESA Backend Administration"
 ADMIN_SITE_TITLE = "EESA Admin Portal"
 ADMIN_INDEX_TITLE = "Welcome to EESA Backend Administration"
+
+# Cache Configuration
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'eesa-cache',
+    }
+}
+
+# Cache time to live is 365 days
+CACHE_TTL = 60 * 60 * 24 * 365
+
+# Key prefix for cache to avoid conflicts
+CACHE_KEY_PREFIX = 'eesa_'

@@ -1,60 +1,23 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.core.validators import FileExtensionValidator
-# from students.models import Student  # Temporarily disabled during migration
 
 User = get_user_model()
 
+# Department choices for Subject
+DEPARTMENT_CHOICES = [
+    ("EEE", "Electrical & Electronics Engineering"),
+    ("ECE", "Electronics & Communication Engineering"),
+    ("IT", "Information Technology Engineering"),
+    ("CS", "Computer Science & Engineering"),
+    ("ME", "Mechanical Engineering"),
+    ("SFE", "Safety & Fire Engineering"),
+    ("CE", "Civil Engineering"),
+]
 
-class Scheme(models.Model):
-    """Academic scheme model (2018, 2022, etc.)"""
-    
-    year = models.PositiveIntegerField(unique=True)
-    name = models.CharField(max_length=100, help_text="e.g., 'Scheme 2018', 'CBCS 2022'")
-    description = models.TextField(blank=True, null=True)
-    is_active = models.BooleanField(default=True)
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        ordering = ['-year']
-        
-    def __str__(self):
-        return f"{self.name} ({self.year})"
+SEMESTER_CHOICES = [(i, f"Semester {i}") for i in range(1, 9)]
 
-
-class Subject(models.Model):
-    """Subject model structured as Scheme → Semester → Subject"""
-    
-    name = models.CharField(max_length=200)
-    code = models.CharField(max_length=20)
-    scheme = models.ForeignKey(Scheme, on_delete=models.CASCADE, related_name='subjects')
-    semester = models.PositiveIntegerField()
-    credits = models.PositiveIntegerField(default=3)
-    is_active = models.BooleanField(default=True)
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        unique_together = ['code', 'scheme', 'semester']
-        ordering = ['scheme__year', 'semester', 'name']
-        indexes = [
-            models.Index(fields=['scheme', 'semester']),
-            models.Index(fields=['code']),
-        ]
-    
-    def __str__(self):
-        return f"{self.code} - {self.name} ({self.scheme.name} Sem{self.semester})"
-    
-    @property
-    def scheme_year(self):
-        """Get scheme year"""
-        return self.scheme.year
-
-
-# Hardcoded academic categories
+# Academic categories
 ACADEMIC_CATEGORIES = [
     ('notes', 'Notes'),
     ('textbook', 'Textbooks'),
@@ -63,13 +26,48 @@ ACADEMIC_CATEGORIES = [
     ('syllabus', 'Syllabus'),
 ]
 
+class Scheme(models.Model):
+    """Academic scheme model (2018, 2022, etc.)"""
+    year = models.PositiveIntegerField(unique=True)
+    name = models.CharField(max_length=100, help_text="e.g., 'Scheme 2018', 'CBCS 2022'")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-year']
+
+    def __str__(self):
+        return f"{self.name} ({self.year})"
+
+class Subject(models.Model):
+    """Subject model with department and semester"""
+    name = models.CharField(max_length=200)
+    code = models.CharField(max_length=20)
+    scheme = models.ForeignKey(Scheme, on_delete=models.CASCADE, related_name='subjects')
+    semester = models.IntegerField(choices=SEMESTER_CHOICES)
+    department = models.CharField(max_length=10, choices=DEPARTMENT_CHOICES, default="EEE")
+    credits = models.PositiveIntegerField(default=3)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['code', 'scheme', 'semester']
+        ordering = ['scheme__year', 'semester', 'name']
+        indexes = [
+            models.Index(fields=['scheme', 'semester']),
+            models.Index(fields=['code']),
+            models.Index(fields=['department']),
+        ]
+
+    def __str__(self):
+        return f"{self.code} - {self.name} ({self.scheme.name} Sem{self.semester})"
+
 def academic_resource_upload_path(instance, filename):
     """Generate upload path for academic resources"""
     return f"academics/{instance.category}/{instance.subject.scheme.year}/{instance.subject.semester}/{instance.subject.code}/{filename}"
 
-
 class AcademicResource(models.Model):
-    """Unified model for notes, textbooks, and PYQ"""
+    """Academic resources like notes, textbooks, and previous year questions"""
     
     MODULE_CHOICES = [
         (1, 'Module 1'),
@@ -79,13 +77,7 @@ class AcademicResource(models.Model):
         (5, 'Module 5'),
         (0, 'General/Complete'),
     ]
-    
-    EXAM_TYPE_CHOICES = [
-        ('internal', 'Internal Exam'),
-        ('sem', 'Semester Exam'),
-        ('other', 'Other'),
-    ]
-    
+
     # Basic Information
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
@@ -96,122 +88,67 @@ class AcademicResource(models.Model):
     file = models.FileField(
         upload_to=academic_resource_upload_path,
         validators=[FileExtensionValidator(allowed_extensions=['pdf'])],
-        help_text="Upload only PDF files. Maximum file size: 15MB. Only PDF format is supported for academic resources."
+        help_text="Upload only PDF files. Maximum file size: 15MB."
     )
-    file_size = models.BigIntegerField(blank=True, null=True)  # in bytes
+    file_size = models.BigIntegerField(blank=True, null=True)
 
-    def clean(self):
-        super().clean()
-        if self.file:
-            # Check file extension
-            if not self.file.name.lower().endswith('.pdf'):
-                from django.core.exceptions import ValidationError
-                raise ValidationError({'file': 'Only PDF files are allowed. Please upload a PDF document.'})
-            
-            # Check file size (15MB limit)
-            if self.file.size > 15 * 1024 * 1024:
-                from django.core.exceptions import ValidationError
-                raise ValidationError({'file': 'File size must be less than 15MB. Please compress the file or use a smaller document.'})
-    
-    # Resource-specific fields
+    # Resource Details
     module_number = models.PositiveIntegerField(
         choices=MODULE_CHOICES, 
-        default=0, 
-        help_text="Module number for notes/textbooks"
+        default=0,
+        help_text="Module number (only for notes)"
     )
-    exam_type = models.CharField(
-        max_length=20, 
-        choices=EXAM_TYPE_CHOICES, 
-        blank=True,
-        help_text="Exam type for PYQ"
-    )
-    exam_year = models.PositiveIntegerField(
-        blank=True, 
-        null=True,
-        help_text="Year of exam for PYQ"
-    )
-    
-    # Additional metadata
-    author = models.CharField(max_length=200, blank=True, help_text="Author for textbooks")
-    publisher = models.CharField(max_length=200, blank=True, help_text="Publisher for textbooks")
-    edition = models.CharField(max_length=50, blank=True, help_text="Edition for textbooks")
-    isbn = models.CharField(max_length=20, blank=True, help_text="ISBN for textbooks")
-    
-    # Upload and approval system
+
+    # Upload and Status
     uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='uploaded_resources')
-    is_approved = models.BooleanField(default=False)
     approved_by = models.ForeignKey(
         User, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True, 
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='approved_resources'
     )
-    approved_at = models.DateTimeField(null=True, blank=True)
-    
+    is_approved = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
     # Statistics
     download_count = models.PositiveIntegerField(default=0)
-    view_count = models.PositiveIntegerField(default=0)
-    
-    # Status
-    is_featured = models.BooleanField(default=False)
-    is_active = models.BooleanField(default=True)
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
+    like_count = models.PositiveIntegerField(default=0)
+
     class Meta:
-        ordering = ['-is_featured', '-created_at']
+        ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['category', 'subject', 'is_approved']),
+            models.Index(fields=['category', 'subject']),
             models.Index(fields=['uploaded_by']),
-            models.Index(fields=['category', 'module_number']),
-            models.Index(fields=['exam_type', 'exam_year']),
+            models.Index(fields=['is_approved']),
+            models.Index(fields=['created_at']),
         ]
-    
+
     def __str__(self):
-        status = "✓" if self.is_approved else "⏳"
-        category_name = self.category
-        
-        if self.category == 'notes' and self.module_number > 0:
-            return f"{status} {self.title} - {self.subject.name} (Module {self.module_number})"
-        elif self.category == 'pyq' and self.exam_year:
-            return f"{status} {self.title} - {self.subject.name} ({self.exam_year} {self.get_exam_type_display()})"
-        else:
-            return f"{status} {self.title} - {self.subject.name}"
-    
+        return f"{self.title} - {self.subject.name} ({self.get_category_display()})"
+
     def save(self, *args, **kwargs):
-        # Set file size if file exists
         if self.file:
             self.file_size = self.file.size
         super().save(*args, **kwargs)
-    
+
     @property
     def file_size_mb(self):
-        if self.file_size:
-            return round(self.file_size / (1024 * 1024), 2)
-        return 0
-    
-    def can_be_approved_by(self, user):
-        """Check if user can approve this resource"""
-        # Only staff with can_verify_notes permission can approve
-        if hasattr(user, 'can_verify_notes') and user.can_verify_notes:
-            return True
-        
-        return False
+        return round(self.file_size / (1024 * 1024), 2) if self.file_size else 0
 
+class ResourceLike(models.Model):
+    """Track resource likes with IP addresses"""
+    resource = models.ForeignKey(AcademicResource, on_delete=models.CASCADE, related_name='likes')
+    ip_address = models.GenericIPAddressField()
+    created_at = models.DateTimeField(auto_now_add=True)
 
-class ResourceDownload(models.Model):
-    """Track resource downloads"""
-    
-    resource = models.ForeignKey(AcademicResource, on_delete=models.CASCADE, related_name='downloads')
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='downloads')
-    downloaded_at = models.DateTimeField(auto_now_add=True)
-    ip_address = models.GenericIPAddressField(blank=True, null=True)
-    
     class Meta:
-        unique_together = ['resource', 'user', 'downloaded_at']
-        ordering = ['-downloaded_at']
-        
+        unique_together = ['resource', 'ip_address']
+        indexes = [
+            models.Index(fields=['resource', 'ip_address']),
+            models.Index(fields=['created_at']),
+        ]
+
     def __str__(self):
-        return f"{self.user.username} downloaded {self.resource.title}"
+        return f"{self.ip_address} liked {self.resource.title}"

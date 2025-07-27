@@ -2,7 +2,8 @@ from django.shortcuts import render
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q
+from django.db.models import F, Q
+from django.db import transaction
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -10,8 +11,13 @@ from rest_framework.response import Response
 from rest_framework import status
 import os
 import json
+from django.core.cache import cache
 
-from .models import Scheme, Subject, AcademicResource
+from .models import (
+    Scheme, Subject, AcademicResource,
+    ResourceLike, ACADEMIC_CATEGORIES
+)
+from .serializers import AcademicResourceSerializer
 
 
 @api_view(['GET'])
@@ -107,17 +113,14 @@ def create_subject(request):
 @permission_classes([])
 def academic_categories_list(request):
     """List all academic categories"""
-    categories = AcademicCategory.objects.filter(is_active=True).order_by('display_order', 'name')
-    categories_data = []
-    for category in categories:
-        categories_data.append({
-            'id': category.id,
-            'name': category.name,
-            'slug': category.slug,
-            'category_type': category.category_type,
-            'description': category.description,
-            'icon': category.icon,
-        })
+    categories_data = [
+        {
+            'id': category[0],
+            'name': category[1],
+            'category_type': category[0]
+        }
+        for category in ACADEMIC_CATEGORIES
+    ]
     return Response(categories_data)
 
 
@@ -125,47 +128,60 @@ def academic_categories_list(request):
 @permission_classes([])
 def category_detail(request, category_type):
     """Get category details by type"""
-    try:
-        category = AcademicCategory.objects.get(category_type=category_type, is_active=True)
-        return Response({
-            'id': category.id,
-            'name': category.name,
-            'slug': category.slug,
-            'category_type': category.category_type,
-            'description': category.description,
-            'icon': category.icon,
-        })
-    except AcademicCategory.DoesNotExist:
-        return Response({'error': 'Category not found'}, status=status.HTTP_404_NOT_FOUND)
+    for category in ACADEMIC_CATEGORIES:
+        if category[0] == category_type:
+            return Response({
+                'id': category[0],
+                'name': category[1],
+                'category_type': category[0]
+            })
+    return Response({'error': 'Category not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 @api_view(['GET'])
-@permission_classes([])  # Remove authentication requirement
+@permission_classes([])
 def academic_resources_list(request):
     """List academic resources with filtering"""
-    resources = AcademicResource.objects.filter(is_approved=True).select_related('subject', 'uploaded_by')
+    resources = AcademicResource.objects.filter(
+        is_approved=True
+    ).select_related(
+        'subject',
+        'subject__scheme',
+        'uploaded_by'
+    )
     
-    # Filter by category type
-    category_type = request.GET.get('category_type')
-    if category_type:
-        resources = resources.filter(category__category_type=category_type)
-    
-    # Filter by other parameters
+    # Get filter parameters
+    category = request.GET.get('category')
     scheme_id = request.GET.get('scheme')
     subject_id = request.GET.get('subject')
     semester = request.GET.get('semester')
     search = request.GET.get('search')
     
+    if category:
+        resources = resources.filter(category=category)
+    
     if scheme_id:
-        resources = resources.filter(scheme_id=scheme_id)
+        resources = resources.filter(subject__scheme_id=scheme_id)
+    
     if subject_id:
         resources = resources.filter(subject_id=subject_id)
+    
     if semester:
-        resources = resources.filter(semester=semester)
+        try:
+            semester = int(semester)
+            resources = resources.filter(subject__semester=semester)
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'Invalid semester value'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
     if search:
         resources = resources.filter(
-            Q(title__icontains=search) | 
-            Q(description__icontains=search)
+            Q(title__icontains=search) |
+            Q(description__icontains=search) |
+            Q(subject__name__icontains=search) |
+            Q(subject__code__icontains=search)
         )
     
     resources_data = []
@@ -174,23 +190,37 @@ def academic_resources_list(request):
             'id': resource.id,
             'title': resource.title,
             'description': resource.description,
-            'file': resource.file.url if resource.file else '',
+            'file': resource.file.url if resource.file else None,
             'file_size': resource.file_size,
-            'module_number': resource.module_number,
-            'exam_type': resource.exam_type,
-            'exam_year': resource.exam_year,
-            'author': resource.author,
-            'download_count': resource.download_count,
+            'file_size_mb': resource.file_size_mb,
+            'module_number': resource.module_number if resource.category == 'notes' else None,
+            'category': resource.category,
+            'subject': {
+                'id': resource.subject.id,
+                'name': resource.subject.name,
+                'code': resource.subject.code,
+                'department': resource.subject.department,
+                'semester': resource.subject.semester,
+                'scheme': {
+                    'id': resource.subject.scheme.id,
+                    'name': resource.subject.scheme.name,
+                    'year': resource.subject.scheme.year
+                }
+            },
+            'uploaded_by': {
+                'id': resource.uploaded_by.id,
+                'name': f"{resource.uploaded_by.first_name} {resource.uploaded_by.last_name}".strip() or resource.uploaded_by.username
+            },
             'created_at': resource.created_at,
-            'updated_at': resource.updated_at,
-            'category': resource.category.category_type,
-            'category_name': resource.category.name,
-            'subject_name': resource.subject.name,
-            'subject_code': resource.subject.code,
-            'is_featured': resource.is_featured,
-            'uploaded_by_name': f"{resource.uploaded_by.first_name} {resource.uploaded_by.last_name}",
+            'like_count': resource.like_count,
+            'is_liked': check_if_liked(resource.id, get_client_ip(request)),
+            'download_count': resource.download_count
         })
-    return Response(resources_data)
+    
+    return Response({
+        'count': len(resources_data),
+        'results': resources_data
+    })
 
 
 @api_view(['GET'])
@@ -249,23 +279,106 @@ def approve_note(request, pk):
         return Response({'error': 'Note not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
+def get_client_ip(request):
+    """Helper function to get client IP address"""
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        return x_forwarded_for.split(',')[0]
+    return request.META.get('REMOTE_ADDR')
+
+def check_if_liked(resource_id, ip):
+    """Check if an IP has liked a resource"""
+    return ResourceLike.objects.filter(
+        resource_id=resource_id,
+        ip_address=ip
+    ).exists()
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def toggle_resource_like(request, pk):
+    """Toggle like status for a resource"""
+    try:
+        with transaction.atomic():
+            resource = AcademicResource.objects.get(pk=pk, is_approved=True)
+            ip = get_client_ip(request)
+            
+            # Check if already liked
+            like_exists = ResourceLike.objects.filter(
+                resource=resource,
+                ip_address=ip
+            ).exists()
+            
+            if like_exists:
+                # Unlike: Remove like record and decrease count
+                ResourceLike.objects.filter(
+                    resource=resource,
+                    ip_address=ip
+                ).delete()
+                resource.like_count = F('like_count') - 1
+                liked = False
+            else:
+                # Like: Create like record and increase count
+                ResourceLike.objects.create(
+                    resource=resource,
+                    ip_address=ip
+                )
+                resource.like_count = F('like_count') + 1
+                liked = True
+            
+            resource.save()
+            resource.refresh_from_db()
+            
+            return Response({
+                'liked': liked,
+                'like_count': resource.like_count
+            })
+            
+    except AcademicResource.DoesNotExist:
+        return Response({'error': 'Resource not found'}, status=status.HTTP_404_NOT_FOUND)
+
 @api_view(['GET'])
 def academic_resource_detail(request, pk):
     """Get single academic resource"""
     try:
-        resource = AcademicResource.objects.get(pk=pk, is_approved=True)
+        resource = AcademicResource.objects.select_related(
+            'subject',
+            'subject__scheme',
+            'uploaded_by'
+        ).get(pk=pk, is_approved=True)
+        
+        # Check if the current IP has liked this resource
+        ip = get_client_ip(request)
+        is_liked = check_if_liked(pk, ip)
+        
         resource_data = {
             'id': resource.id,
             'title': resource.title,
             'description': resource.description,
             'file': resource.file.url if resource.file else None,
             'file_size': resource.file_size,
-            'module_number': resource.module_number,
-            'exam_type': resource.exam_type,
-            'exam_year': resource.exam_year,
-            'author': resource.author,
+            'file_size_mb': resource.file_size_mb,
+            'module_number': resource.module_number if resource.category == 'notes' else None,
+            'category': resource.category,
+            'subject': {
+                'id': resource.subject.id,
+                'name': resource.subject.name,
+                'code': resource.subject.code,
+                'department': resource.subject.department,
+                'semester': resource.subject.semester,
+                'scheme': {
+                    'id': resource.subject.scheme.id,
+                    'name': resource.subject.scheme.name,
+                    'year': resource.subject.scheme.year
+                }
+            },
+            'uploaded_by': {
+                'id': resource.uploaded_by.id,
+                'name': f"{resource.uploaded_by.first_name} {resource.uploaded_by.last_name}".strip() or resource.uploaded_by.username
+            },
             'created_at': resource.created_at,
-            'updated_at': resource.updated_at
+            'like_count': resource.like_count,
+            'is_liked': is_liked,
+            'download_count': resource.download_count
         }
         return Response(resource_data)
     except AcademicResource.DoesNotExist:
@@ -276,76 +389,42 @@ def academic_resource_detail(request, pk):
 @permission_classes([IsAuthenticated])
 def upload_academic_resource(request):
     """Upload new academic resource"""
-    # Simple validation and creation
-    required_fields = ['title', 'category', 'file']
-    for field in required_fields:
-        if field not in request.data:
-            return Response({'error': f'{field} is required'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    # File validation
-    uploaded_file = request.FILES.get('file')
-    if not uploaded_file:
-        return Response({'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    # Check file extension
-    if not uploaded_file.name.lower().endswith('.pdf'):
+    serializer = AcademicResourceSerializer(data=request.data, context={'request': request})
+    if serializer.is_valid():
+        resource = serializer.save(uploaded_by=request.user)
         return Response({
-            'error': 'Only PDF files are allowed. Please upload a PDF document.',
-            'help_text': 'Upload only PDF files. Maximum file size: 15MB. Only PDF format is supported for academic resources.'
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    # Check file size (15MB limit)
-    if uploaded_file.size > 15 * 1024 * 1024:
-        return Response({
-            'error': 'File size must be less than 15MB. Please compress the file or use a smaller document.',
-            'help_text': 'Upload only PDF files. Maximum file size: 15MB. Only PDF format is supported for academic resources.'
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    try:
-        category = AcademicCategory.objects.get(id=request.data['category'])
-        resource = AcademicResource.objects.create(
-            title=request.data['title'],
-            description=request.data.get('description', ''),
-            category=category,
-            file=uploaded_file,
-            uploaded_by=request.user,
-            module_number=request.data.get('module_number', 1),
-            exam_type=request.data.get('exam_type', ''),
-            exam_year=request.data.get('exam_year'),
-            author=request.data.get('author', '')
-        )
-        return Response({'id': resource.id, 'message': 'Resource uploaded successfully'}, 
-                       status=status.HTTP_201_CREATED)
-    except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            'id': resource.id,
+            'message': 'Resource uploaded successfully'
+        }, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['GET'])
-@permission_classes([])  # Remove authentication requirement
 def download_academic_resource(request, pk):
-    """Download academic resource file"""
+    """Download academic resource file and increment counter"""
     try:
-        resource = AcademicResource.objects.get(pk=pk, is_approved=True)
-        
-        if not resource.file:
-            return Response({'error': 'File not found'}, status=status.HTTP_404_NOT_FOUND)
-        
-        # Increment download count
-        resource.download_count += 1
-        resource.save()
-        
-        # Get the file path
-        file_path = resource.file.path
-        
-        if not os.path.exists(file_path):
-            return Response({'error': 'File not found on disk'}, status=status.HTTP_404_NOT_FOUND)
-        
-        # Open and serve the file
-        with open(file_path, 'rb') as f:
-            response = HttpResponse(f.read(), content_type='application/octet-stream')
-            response['Content-Disposition'] = f'attachment; filename="{os.path.basename(file_path)}"'
-            return response
+        with transaction.atomic():
+            resource = AcademicResource.objects.get(pk=pk, is_approved=True)
             
+            if not resource.file:
+                return Response({'error': 'File not found'}, status=status.HTTP_404_NOT_FOUND)
+            
+            # Increment download count
+            resource.download_count = F('download_count') + 1
+            resource.save()
+            
+            # Get the file path
+            file_path = resource.file.path
+            
+            if not os.path.exists(file_path):
+                return Response({'error': 'File not found on disk'}, status=status.HTTP_404_NOT_FOUND)
+            
+            # Open and serve the file
+            with open(file_path, 'rb') as f:
+                response = HttpResponse(f.read(), content_type='application/octet-stream')
+                response['Content-Disposition'] = f'attachment; filename="{os.path.basename(file_path)}"'
+                return response
+                
     except AcademicResource.DoesNotExist:
         return Response({'error': 'Resource not found'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
