@@ -1,8 +1,5 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from django.urls import reverse
-from django.http import HttpResponseRedirect
-from django.contrib import messages
 from .models import Scheme, Subject, AcademicResource
 
 
@@ -33,7 +30,7 @@ class SubjectAdmin(admin.ModelAdmin):
 class AcademicResourceAdmin(admin.ModelAdmin):
     list_display = [
         'title', 'category', 'subject', 'module_number',
-        'uploaded_by', 'approved_by', 'is_approved', 'created_at'
+        'uploaded_by', 'is_approved', 'created_at', 'file_link'
     ]
     list_filter = [
         'category', 'subject__scheme', 'subject__department',
@@ -46,16 +43,15 @@ class AcademicResourceAdmin(admin.ModelAdmin):
     list_editable = ['is_approved']
     readonly_fields = [
         'uploaded_by', 'approved_by', 'file_size', 'download_count',
-        'like_count', 'created_at'
+        'like_count', 'created_at', 'file_link'
     ]
-    date_hierarchy = 'created_at'
     
     fieldsets = (
         ('Basic Information', {
             'fields': ('title', 'description', 'category', 'subject')
         }),
         ('File Information', {
-            'fields': ('file', 'file_size')
+            'fields': ('file', 'file_size', 'file_link')
         }),
         ('Resource Details', {
             'fields': ('module_number',)
@@ -72,21 +68,18 @@ class AcademicResourceAdmin(admin.ModelAdmin):
         })
     )
 
+    def file_link(self, obj):
+        if obj.file:
+            return format_html('<a href="{}" target="_blank">View File</a>', obj.file.url)
+        return "No file uploaded"
+    file_link.short_description = "File"
+
     def save_model(self, request, obj, form, change):
         if not change:  # If creating new object
             obj.uploaded_by = request.user
-        if 'is_approved' in form.changed_data:
-            if obj.is_approved:
-                obj.approved_by = request.user
-            else:
-                obj.approved_by = None  # Remove approver if unapproved
+        if 'is_approved' in form.changed_data and obj.is_approved:
+            obj.approved_by = request.user
         super().save_model(request, obj, form, change)
-
-    def get_readonly_fields(self, request, obj=None):
-        """Make uploaded_by and approved_by always readonly"""
-        readonly_fields = list(super().get_readonly_fields(request, obj))
-        readonly_fields.extend(['uploaded_by', 'approved_by'])
-        return readonly_fields
 
 
 # AcademicCategory is not registered in admin, so it will not appear in the admin panel.

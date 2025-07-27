@@ -64,7 +64,9 @@ class Subject(models.Model):
 
 def academic_resource_upload_path(instance, filename):
     """Generate upload path for academic resources"""
-    return f"academics/{instance.category}/{instance.subject.scheme.year}/{instance.subject.semester}/{instance.subject.code}/{filename}"
+    # Clean the filename to remove any problematic characters
+    clean_filename = "".join(c for c in filename if c.isalnum() or c in ('-', '_', '.'))
+    return f"academics/{instance.category}/{instance.subject.scheme.year}/{instance.subject.semester}/{instance.subject.code}/{clean_filename}"
 
 class AcademicResource(models.Model):
     """Academic resources like notes, textbooks, and previous year questions"""
@@ -88,7 +90,8 @@ class AcademicResource(models.Model):
     file = models.FileField(
         upload_to=academic_resource_upload_path,
         validators=[FileExtensionValidator(allowed_extensions=['pdf'])],
-        help_text="Upload only PDF files. Maximum file size: 15MB."
+        help_text="Upload only PDF files. Maximum file size: 15MB.",
+        max_length=255  # Increased for Cloudinary URLs
     )
     file_size = models.BigIntegerField(blank=True, null=True)
 
@@ -128,6 +131,18 @@ class AcademicResource(models.Model):
     def __str__(self):
         return f"{self.title} - {self.subject.name} ({self.get_category_display()})"
 
+    def clean(self):
+        if self.file:
+            # Check file extension
+            if not self.file.name.lower().endswith('.pdf'):
+                from django.core.exceptions import ValidationError
+                raise ValidationError({'file': 'Only PDF files are allowed. Please upload a PDF document.'})
+            
+            # Check file size (15MB limit)
+            if self.file.size > 15 * 1024 * 1024:
+                from django.core.exceptions import ValidationError
+                raise ValidationError({'file': 'File size must be less than 15MB. Please compress the file or use a smaller document.'})
+
     def save(self, *args, **kwargs):
         if self.file:
             self.file_size = self.file.size
@@ -136,6 +151,13 @@ class AcademicResource(models.Model):
     @property
     def file_size_mb(self):
         return round(self.file_size / (1024 * 1024), 2) if self.file_size else 0
+
+    @property
+    def file_url(self):
+        """Get the complete URL for the file"""
+        if self.file:
+            return self.file.url
+        return None
 
 class ResourceLike(models.Model):
     """Track resource likes with IP addresses"""

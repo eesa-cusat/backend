@@ -135,27 +135,39 @@ else:
     }
 
 # File storage configuration
+# Static files (CSS, JavaScript, Images)
+STATICFILES_FINDERS = [
+    'django.contrib.staticfiles.finders.FileSystemFinder',
+    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+]
+
 if DEBUG:
-    # Local development - Local Storage
-    MEDIA_URL = '/media/'
-    MEDIA_ROOT = BASE_DIR / 'media'
+    # Local development settings
     STATIC_URL = '/static/'
     STATIC_ROOT = BASE_DIR / 'staticfiles'
+    STATICFILES_DIRS = [BASE_DIR / 'static']
+    
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
 else:
-    # Production - Cloudinary
+    # Production settings with Cloudinary
+    CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL')
+    
     CLOUDINARY_STORAGE = {
         'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
         'API_KEY': os.environ.get('CLOUDINARY_API_KEY'),
         'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET'),
+        'SECURE': True
     }
     
-    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-    STATICFILES_STORAGE = 'cloudinary_storage.storage.StaticHashedCloudinaryStorage'
-    
-    # Set static and media URLs for production
+    # Static files configuration
     STATIC_URL = '/static/'
     STATIC_ROOT = BASE_DIR / 'staticfiles'
+    STATICFILES_STORAGE = 'cloudinary_storage.storage.StaticHashedCloudinaryStorage'
+    
+    # Media files configuration
     MEDIA_URL = '/media/'
+    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -266,3 +278,15 @@ CACHE_TTL = 60 * 60 * 24 * 365
 
 # Key prefix for cache to avoid conflicts
 CACHE_KEY_PREFIX = 'eesa_'
+
+# Ensure static files are handled by WhiteNoise in all environments
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
+
+# WhiteNoise for serving static files
+MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
+
+# WhiteNoise configuration
+WHITENOISE_USE_FINDERS = True
+WHITENOISE_AUTOREFRESH = True
+WHITENOISE_MANIFEST_STRICT = False

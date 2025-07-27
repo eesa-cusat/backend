@@ -29,7 +29,7 @@ ENV DEBUG False
 
 # Install runtime dependencies only
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libpq5 \
+    && apt-get install -y --no-install-recommends libpq5 curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user
@@ -73,6 +73,10 @@ exec gunicorn eesa_backend.wsgi:application --bind 0.0.0.0:${PORT:-8000} --worke
 
 # Expose port (will be overridden by Render)
 EXPOSE 8000
+
+# Add health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8000}/admin/ || exit 1
 
 # Start Gunicorn server
 CMD ["/app/start.sh"] 
