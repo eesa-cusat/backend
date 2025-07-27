@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.core.validators import FileExtensionValidator
+from django.core.exceptions import ValidationError
+from django.conf import settings
 
 User = get_user_model()
 
@@ -133,15 +135,15 @@ class AcademicResource(models.Model):
 
     def clean(self):
         if self.file:
-            # Check file extension
+            # Validate file type
             if not self.file.name.lower().endswith('.pdf'):
-                from django.core.exceptions import ValidationError
-                raise ValidationError({'file': 'Only PDF files are allowed. Please upload a PDF document.'})
+                raise ValidationError('Only PDF files are allowed.')
             
-            # Check file size (15MB limit)
+            # Validate file size (15MB limit)
             if self.file.size > 15 * 1024 * 1024:
-                from django.core.exceptions import ValidationError
-                raise ValidationError({'file': 'File size must be less than 15MB. Please compress the file or use a smaller document.'})
+                raise ValidationError('File size must be less than 15MB.')
+        
+        super().clean()
 
     def save(self, *args, **kwargs):
         if self.file:
@@ -154,9 +156,14 @@ class AcademicResource(models.Model):
 
     @property
     def file_url(self):
-        """Get the complete URL for the file"""
+        """Get the full Cloudinary URL for the file"""
         if self.file:
-            return self.file.url
+            if not settings.DEBUG:
+                # In production, return Cloudinary URL
+                return self.file.url
+            else:
+                # In development, return media URL
+                return f"{settings.MEDIA_URL}{self.file.name}"
         return None
 
 class ResourceLike(models.Model):

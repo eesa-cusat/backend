@@ -69,8 +69,15 @@ class AcademicResourceAdmin(admin.ModelAdmin):
     )
 
     def file_link(self, obj):
+        """Display clickable link to the file with Cloudinary URL"""
         if obj.file:
-            return format_html('<a href="{}" target="_blank">View File</a>', obj.file.url)
+            file_url = obj.file_url
+            return format_html(
+                '<a href="{}" target="_blank">View File</a> '
+                '(<a href="{}" download>Download</a>)<br>'
+                '<small style="color: #666;">{}</small>',
+                file_url, file_url, file_url
+            )
         return "No file uploaded"
     file_link.short_description = "File"
 

@@ -157,16 +157,22 @@ else:
         'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
         'API_KEY': os.environ.get('CLOUDINARY_API_KEY'),
         'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET'),
-        'SECURE': True
+        'SECURE': True,
+        'STATIC_TRANSFORMATIONS': {
+            'default': {
+                'fetch_format': 'auto',
+                'quality': 'auto'
+            }
+        }
     }
     
     # Static files configuration
-    STATIC_URL = '/static/'
+    STATIC_URL = f'https://res.cloudinary.com/{os.environ.get("CLOUDINARY_CLOUD_NAME")}/raw/upload/'
     STATIC_ROOT = BASE_DIR / 'staticfiles'
     STATICFILES_STORAGE = 'cloudinary_storage.storage.StaticHashedCloudinaryStorage'
     
     # Media files configuration
-    MEDIA_URL = '/media/'
+    MEDIA_URL = f'https://res.cloudinary.com/{os.environ.get("CLOUDINARY_CLOUD_NAME")}/raw/upload/'
     DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 # Password validation
