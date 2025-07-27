@@ -21,6 +21,7 @@ services:
         - placements/**
         - projects/**
         - manage.py
+        - static/**
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
@@ -42,5 +43,7 @@ services:
         sync: false
       - key: DISABLE_COLLECTSTATIC
         value: "0"
+      - key: DJANGO_SETTINGS_MODULE
+        value: "eesa_backend.settings"
       - key: CORS_ALLOWED_ORIGINS
         sync: false

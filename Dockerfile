@@ -45,11 +45,10 @@ WORKDIR /app
 # Copy project (cache this layer separately)
 COPY . /app/
 
-# Create necessary directories
-RUN mkdir -p /app/staticfiles /app/media
-
-# Change ownership to django user
-RUN chown -R django:django /app
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/staticfiles /app/media \
+    && chown -R django:django /app \
+    && chmod -R 755 /app/staticfiles /app/media
 
 # Switch to django user
 USER django
@@ -59,13 +58,9 @@ RUN echo '#!/bin/bash\n\
 # Run migrations\n\
 python manage.py migrate --noinput\n\
 \n\
-# Collect static files if Cloudinary is configured\n\
-if [ -n "$CLOUDINARY_CLOUD_NAME" ] && [ -n "$CLOUDINARY_API_KEY" ] && [ -n "$CLOUDINARY_API_SECRET" ]; then\n\
-    echo "Collecting static files..."\n\
-    python manage.py collectstatic --noinput\n\
-else\n\
-    echo "Skipping collectstatic (Cloudinary not configured)"\n\
-fi\n\
+# Always try to collect static files\n\
+echo "Collecting static files..."\n\
+python manage.py collectstatic --noinput --clear\n\
 \n\
 # Start Gunicorn\n\
 exec gunicorn eesa_backend.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 2 --timeout 120\n\
