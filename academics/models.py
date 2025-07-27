@@ -158,12 +158,17 @@ class AcademicResource(models.Model):
     def file_url(self):
         """Get the full Cloudinary URL for the file"""
         if self.file:
-            if not settings.DEBUG:
-                # In production, return Cloudinary URL
-                return self.file.url
-            else:
-                # In development, return media URL
-                return f"{settings.MEDIA_URL}{self.file.name}"
+            # Debug logging for file URL
+            print(f"🔧 File URL Debug for {self.title}:")
+            print(f"   File field: {self.file}")
+            print(f"   File name: {self.file.name}")
+            print(f"   File URL: {self.file.url}")
+            print(f"   Storage backend: {self.file.storage.__class__.__name__}")
+            
+            # Always return the file.url which will be Cloudinary URL in production
+            return self.file.url
+        else:
+            print(f"❌ No file attached to resource: {self.title}")
         return None
 
 class ResourceLike(models.Model):

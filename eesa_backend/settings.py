@@ -155,18 +155,46 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Cloudinary settings
 if not DEBUG:
     CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL')
+    CLOUDINARY_CLOUD_NAME = os.environ.get('CLOUDINARY_CLOUD_NAME')
+    CLOUDINARY_API_KEY = os.environ.get('CLOUDINARY_API_KEY')
+    CLOUDINARY_API_SECRET = os.environ.get('CLOUDINARY_API_SECRET')
     
-    if CLOUDINARY_URL:  # Only configure if Cloudinary is set up
+    # Debug logging for Cloudinary configuration
+    print("🔧 Cloudinary Configuration Check:")
+    print(f"   CLOUDINARY_URL: {'SET' if CLOUDINARY_URL else 'MISSING'}")
+    print(f"   CLOUDINARY_CLOUD_NAME: {'SET' if CLOUDINARY_CLOUD_NAME else 'MISSING'}")
+    print(f"   CLOUDINARY_API_KEY: {'SET' if CLOUDINARY_API_KEY else 'MISSING'}")
+    print(f"   CLOUDINARY_API_SECRET: {'SET' if CLOUDINARY_API_SECRET else 'MISSING'}")
+    
+    if CLOUDINARY_URL and CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
+        print("✅ All Cloudinary environment variables are set")
         CLOUDINARY_STORAGE = {
-            'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
-            'API_KEY': os.environ.get('CLOUDINARY_API_KEY'),
-            'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET'),
+            'CLOUD_NAME': CLOUDINARY_CLOUD_NAME,
+            'API_KEY': CLOUDINARY_API_KEY,
+            'API_SECRET': CLOUDINARY_API_SECRET,
             'SECURE': True
         }
         
-        # Override storage settings
+        # Override storage settings for Cloudinary
         STATICFILES_STORAGE = 'cloudinary_storage.storage.StaticHashedCloudinaryStorage'
         DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+        
+        # Update URLs for Cloudinary
+        STATIC_URL = f'https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/'
+        MEDIA_URL = f'https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/'
+        
+        print("✅ Cloudinary storage configured successfully")
+        print(f"   STATIC_URL: {STATIC_URL}")
+        print(f"   MEDIA_URL: {MEDIA_URL}")
+    else:
+        print("❌ Cloudinary configuration incomplete - files will be stored locally")
+        print("   Please set all required Cloudinary environment variables:")
+        print("   - CLOUDINARY_URL")
+        print("   - CLOUDINARY_CLOUD_NAME") 
+        print("   - CLOUDINARY_API_KEY")
+        print("   - CLOUDINARY_API_SECRET")
+else:
+    print("🔧 Development mode - using local file storage")
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -273,14 +301,45 @@ CACHE_TTL = 60 * 60 * 24 * 365
 # Key prefix for cache to avoid conflicts
 CACHE_KEY_PREFIX = 'eesa_'
 
-# Ensure static files are handled by WhiteNoise in all environments
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
+# Static files (CSS, JavaScript, Images)
+STATICFILES_FINDERS = [
+    'django.contrib.staticfiles.finders.FileSystemFinder',
+    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+]
 
-# WhiteNoise for serving static files
-MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
+# Base directory for static files
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_DIRS = [
+    BASE_DIR / 'static',
+]
+
+# Media files configuration
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# Cloudinary settings
+if not DEBUG:
+    CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL')
+    
+    if CLOUDINARY_URL:  # Only configure if Cloudinary is set up
+        CLOUDINARY_STORAGE = {
+            'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
+            'API_KEY': os.environ.get('CLOUDINARY_API_KEY'),
+            'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET'),
+            'SECURE': True
+        }
+        
+        # Override storage settings for Cloudinary
+        STATICFILES_STORAGE = 'cloudinary_storage.storage.StaticHashedCloudinaryStorage'
+        DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+        
+        # Update URLs for Cloudinary
+        STATIC_URL = f'https://res.cloudinary.com/{os.environ.get("CLOUDINARY_CLOUD_NAME")}/raw/upload/'
+        MEDIA_URL = f'https://res.cloudinary.com/{os.environ.get("CLOUDINARY_CLOUD_NAME")}/raw/upload/'
 
 # WhiteNoise configuration
+MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
 WHITENOISE_USE_FINDERS = True
 WHITENOISE_AUTOREFRESH = True
 WHITENOISE_MANIFEST_STRICT = False
