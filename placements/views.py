@@ -419,6 +419,22 @@ def placed_students_list(request):
         if verified_only:
             placed_students = placed_students.filter(is_verified=True)
         
+        # Apply category filter (Core/Tech/General)
+        category = request.GET.get('category')
+        if category and category in ['core', 'tech', 'general']:
+            placed_students = placed_students.filter(category=category)
+        
+        # Apply status filter (placed students vs past placements)
+        status_filter = request.GET.get('status')
+        if status_filter == 'placed':
+            # Show only currently placed students (recent offers)
+            current_year = timezone.now().year
+            placed_students = placed_students.filter(offer_date__year=current_year)
+        elif status_filter == 'past':
+            # Show past placements (older offers)
+            current_year = timezone.now().year
+            placed_students = placed_students.filter(offer_date__year__lt=current_year)
+        
         from .serializers import PlacedStudentListSerializer
         serializer = PlacedStudentListSerializer(placed_students, many=True)
         return Response({
@@ -497,3 +513,252 @@ def placed_student_create(request):
             'data': serializer.data
         }, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def placement_filters(request):
+    """Get available filter options for placements"""
+    from .models import PlacedStudent, Company
+    
+    # Get unique batch years
+    batch_years = PlacedStudent.objects.filter(is_active=True).values_list('batch_year', flat=True).distinct().order_by('-batch_year')
+    
+    # Get unique companies
+    companies = Company.objects.filter(is_active=True, placed_students__is_active=True).distinct().order_by('name')
+    
+    # Get category options
+    categories = [
+        {'value': 'core', 'label': 'Core'},
+        {'value': 'tech', 'label': 'Tech'},
+        {'value': 'general', 'label': 'General'},
+    ]
+    
+    # Get status options
+    status_options = [
+        {'value': 'placed', 'label': 'Placed Students'},
+        {'value': 'past', 'label': 'Past Placements'},
+    ]
+    
+    return Response({
+        'filters': {
+            'batch_years': list(batch_years),
+            'companies': [{'id': c.id, 'name': c.name} for c in companies],
+            'categories': categories,
+            'status_options': status_options,
+        }
+    })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def placement_statistics_detailed(request):
+    """Get detailed placement statistics with charts and analytics"""
+    from .models import PlacedStudent, PlacementStatistics
+    from django.db.models import Avg, Max, Min, Count
+    from django.utils import timezone
+    
+    current_year = timezone.now().year
+    
+    # Get overall statistics
+    total_placed = PlacedStudent.objects.filter(is_active=True).count()
+    current_year_placed = PlacedStudent.objects.filter(
+        is_active=True, 
+        offer_date__year=current_year
+    ).count()
+    
+    # Package statistics
+    package_stats = PlacedStudent.objects.filter(is_active=True).aggregate(
+        avg_package=Avg('package_lpa'),
+        max_package=Max('package_lpa'),
+        min_package=Min('package_lpa')
+    )
+    
+    # Category-wise statistics
+    category_stats = PlacedStudent.objects.filter(is_active=True).values('category').annotate(
+        count=Count('id'),
+        avg_package=Avg('package_lpa'),
+        max_package=Max('package_lpa')
+    ).order_by('category')
+    
+    # Year-wise statistics
+    year_stats = PlacedStudent.objects.filter(is_active=True).values('offer_date__year').annotate(
+        count=Count('id'),
+        avg_package=Avg('package_lpa'),
+        max_package=Max('package_lpa')
+    ).order_by('-offer_date__year')
+    
+    # Company-wise statistics
+    company_stats = PlacedStudent.objects.filter(is_active=True).values(
+        'company__name', 'company__logo'
+    ).annotate(
+        count=Count('id'),
+        avg_package=Avg('package_lpa'),
+        max_package=Max('package_lpa')
+    ).order_by('-count')[:10]  # Top 10 companies
+    
+    # Job type statistics
+    job_type_stats = PlacedStudent.objects.filter(is_active=True).values('job_type').annotate(
+        count=Count('id')
+    ).order_by('-count')
+    
+    # Recent placements (last 6 months)
+    six_months_ago = timezone.now() - timezone.timedelta(days=180)
+    recent_placements = PlacedStudent.objects.filter(
+        is_active=True,
+        offer_date__gte=six_months_ago
+    ).count()
+    
+    return Response({
+        'statistics': {
+            'overview': {
+                'total_placed': total_placed,
+                'current_year_placed': current_year_placed,
+                'recent_placements': recent_placements,
+                'avg_package': float(package_stats['avg_package'] or 0),
+                'max_package': float(package_stats['max_package'] or 0),
+                'min_package': float(package_stats['min_package'] or 0),
+            },
+            'by_category': [
+                {
+                    'category': stat['category'],
+                    'category_display': dict(PlacedStudent._meta.get_field('category').choices)[stat['category']],
+                    'count': stat['count'],
+                    'avg_package': float(stat['avg_package'] or 0),
+                    'max_package': float(stat['max_package'] or 0),
+                }
+                for stat in category_stats
+            ],
+            'by_year': [
+                {
+                    'year': stat['offer_date__year'],
+                    'count': stat['count'],
+                    'avg_package': float(stat['avg_package'] or 0),
+                    'max_package': float(stat['max_package'] or 0),
+                }
+                for stat in year_stats
+            ],
+            'top_companies': [
+                {
+                    'name': stat['company__name'],
+                    'logo': stat['company__logo'].url if stat['company__logo'] else None,
+                    'count': stat['count'],
+                    'avg_package': float(stat['avg_package'] or 0),
+                    'max_package': float(stat['max_package'] or 0),
+                }
+                for stat in company_stats
+            ],
+            'by_job_type': [
+                {
+                    'job_type': stat['job_type'],
+                    'job_type_display': dict(PlacedStudent._meta.get_field('job_type').choices)[stat['job_type']],
+                    'count': stat['count'],
+                }
+                for stat in job_type_stats
+            ],
+        }
+    })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def past_recruiters(request):
+    """Get list of past recruiters with their placement history"""
+    from .models import Company, PlacedStudent
+    from django.db.models import Count, Avg, Max
+    from django.utils import timezone
+    
+    current_year = timezone.now().year
+    
+    # Get companies that have recruited students
+    recruiters = Company.objects.filter(
+        is_active=True,
+        placed_students__is_active=True
+    ).distinct().annotate(
+        total_recruited=Count('placed_students'),
+        avg_package=Avg('placed_students__package_lpa'),
+        max_package=Max('placed_students__package_lpa'),
+        last_recruitment_year=Max('placed_students__offer_date__year')
+    ).order_by('-total_recruited', '-last_recruitment_year')
+    
+    # Apply filters
+    search = request.GET.get('search')
+    if search:
+        recruiters = recruiters.filter(
+            Q(name__icontains=search) |
+            Q(industry__icontains=search) |
+            Q(location__icontains=search)
+        )
+    
+    # Filter by recruitment year
+    year_filter = request.GET.get('year')
+    if year_filter:
+        recruiters = recruiters.filter(placed_students__offer_date__year=year_filter)
+    
+    # Filter by category
+    category_filter = request.GET.get('category')
+    if category_filter and category_filter in ['core', 'tech', 'general']:
+        recruiters = recruiters.filter(placed_students__category=category_filter)
+    
+    # Get detailed information for each recruiter
+    recruiter_details = []
+    for recruiter in recruiters:
+        # Get recent placements (last 3 years)
+        recent_placements = PlacedStudent.objects.filter(
+            company=recruiter,
+            is_active=True,
+            offer_date__year__gte=current_year - 3
+        ).order_by('-offer_date')[:5]  # Last 5 placements
+        
+        # Get category breakdown
+        category_breakdown = PlacedStudent.objects.filter(
+            company=recruiter,
+            is_active=True
+        ).values('category').annotate(
+            count=Count('id'),
+            avg_package=Avg('package_lpa')
+        ).order_by('category')
+        
+        recruiter_details.append({
+            'id': recruiter.id,
+            'name': recruiter.name,
+            'logo': recruiter.logo.url if recruiter.logo else None,
+            'industry': recruiter.industry,
+            'location': recruiter.location,
+            'website': recruiter.website,
+            'total_recruited': recruiter.total_recruited,
+            'avg_package': float(recruiter.avg_package or 0),
+            'max_package': float(recruiter.max_package or 0),
+            'last_recruitment_year': recruiter.last_recruitment_year,
+            'is_current_recruiter': recruiter.last_recruitment_year == current_year,
+            'recent_placements': [
+                {
+                    'student_name': placement.student_name,
+                    'job_title': placement.job_title,
+                    'package_lpa': float(placement.package_lpa),
+                    'offer_date': placement.offer_date,
+                    'category': placement.category,
+                    'category_display': placement.get_category_display(),
+                }
+                for placement in recent_placements
+            ],
+            'category_breakdown': [
+                {
+                    'category': breakdown['category'],
+                    'category_display': dict(PlacedStudent._meta.get_field('category').choices)[breakdown['category']],
+                    'count': breakdown['count'],
+                    'avg_package': float(breakdown['avg_package'] or 0),
+                }
+                for breakdown in category_breakdown
+            ],
+        })
+    
+    return Response({
+        'recruiters': recruiter_details,
+        'count': len(recruiter_details),
+        'summary': {
+            'total_recruiters': recruiters.count(),
+            'current_year_recruiters': recruiters.filter(last_recruitment_year=current_year).count(),
+            'past_recruiters': recruiters.filter(last_recruitment_year__lt=current_year).count(),
+        }
+    })

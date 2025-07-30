@@ -3,6 +3,26 @@ from django.contrib.auth import get_user_model
 from django.core.validators import FileExtensionValidator
 from django.core.exceptions import ValidationError
 from django.conf import settings
+from django.core.files.storage import FileSystemStorage
+
+# Import Cloudinary storage only in production
+if not settings.DEBUG:
+    from cloudinary_storage.storage import MediaCloudinaryStorage
+    from .storage import PDFCloudinaryStorage
+
+def get_storage():
+    """Get the appropriate storage backend based on environment"""
+    if settings.DEBUG:
+        return FileSystemStorage()
+    else:
+        try:
+            from .storage import PDFCloudinaryStorage, CLOUDINARY_AVAILABLE
+            if CLOUDINARY_AVAILABLE:
+                return PDFCloudinaryStorage()
+            else:
+                return FileSystemStorage()
+        except ImportError:
+            return FileSystemStorage()
 
 User = get_user_model()
 
@@ -65,10 +85,29 @@ class Subject(models.Model):
         return f"{self.code} - {self.name} ({self.scheme.name} Sem{self.semester})"
 
 def academic_resource_upload_path(instance, filename):
-    """Generate upload path for academic resources"""
-    # Clean the filename to remove any problematic characters
-    clean_filename = "".join(c for c in filename if c.isalnum() or c in ('-', '_', '.'))
-    return f"academics/{instance.category}/{instance.subject.scheme.year}/{instance.subject.semester}/{instance.subject.code}/{clean_filename}"
+    """Generate upload path for academic resources with proper hierarchy"""
+    # Clean the filename to remove any problematic characters and ensure it's URL-safe
+    import re
+    clean_filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
+    
+    # Remove .pdf extension if it exists to avoid double extensions
+    if clean_filename.lower().endswith('.pdf'):
+        clean_filename = clean_filename[:-4]  # Remove .pdf
+    
+    # Main category: academics
+    # Subcategory: category (notes, textbook, pyq, etc.)
+    # Year: scheme year
+    # Semester: semester number
+    # Department: department code
+    # Subject: subject code
+    base_path = f"academics/{instance.category}/{instance.subject.scheme.year}/semester_{instance.subject.semester}/{instance.subject.department}/{instance.subject.code}"
+    
+    # Add module number for notes category
+    if instance.category == 'notes' and instance.module_number > 0:
+        base_path += f"/module_{instance.module_number}"
+    
+    # Return the path without .pdf extension (storage will add it)
+    return f"{base_path}/{clean_filename}"
 
 class AcademicResource(models.Model):
     """Academic resources like notes, textbooks, and previous year questions"""
@@ -93,7 +132,8 @@ class AcademicResource(models.Model):
         upload_to=academic_resource_upload_path,
         validators=[FileExtensionValidator(allowed_extensions=['pdf'])],
         help_text="Upload only PDF files. Maximum file size: 15MB.",
-        max_length=255  # Increased for Cloudinary URLs
+        max_length=255,  # Increased for Cloudinary URLs
+        storage=get_storage()
     )
     file_size = models.BigIntegerField(blank=True, null=True)
 
@@ -156,19 +196,54 @@ class AcademicResource(models.Model):
 
     @property
     def file_url(self):
-        """Get the full Cloudinary URL for the file"""
+        """Get the file URL based on environment"""
         if self.file:
-            # Debug logging for file URL
-            print(f"🔧 File URL Debug for {self.title}:")
-            print(f"   File field: {self.file}")
-            print(f"   File name: {self.file.name}")
-            print(f"   File URL: {self.file.url}")
-            print(f"   Storage backend: {self.file.storage.__class__.__name__}")
+            # In development, use local file URL
+            if settings.DEBUG:
+                return self.file.url if hasattr(self.file, 'url') else str(self.file)
             
-            # Always return the file.url which will be Cloudinary URL in production
-            return self.file.url
+            # In production, handle Cloudinary URLs
+            file_str = str(self.file)
+            
+            # If it's already a full Cloudinary URL, use it directly
+            if file_str.startswith('http'):
+                # Fix the missing slash issue
+                if 'https:/res.cloudinary.com' in file_str:
+                    fixed_url = file_str.replace('https:/res.cloudinary.com', 'https://res.cloudinary.com')
+                    return fixed_url
+                return file_str
+            
+            # For new uploads, use the file.url which should be the correct Cloudinary URL
+            if hasattr(self.file, 'url') and self.file.url:
+                url = self.file.url
+                # If the file field is already a full URL, don't use file.url as it creates malformed URLs
+                if file_str.startswith('http'):
+                    # Just use the file field string directly
+                    return file_str
+                
+                # Ensure the URL is properly formatted for PDF preview
+                if url and 'res.cloudinary.com' in url:
+                    # Make sure we're using the raw resource URL
+                    if '/image/upload/' in url:
+                        url = url.replace('/image/upload/', '/raw/upload/')
+                    return url
+                return url
+            
+            # Fallback to the file field string
+            return file_str
         else:
-            print(f"❌ No file attached to resource: {self.title}")
+            return None
+
+    def get_download_url(self):
+        """Get a download URL for the file with proper headers"""
+        if self.file:
+            base_url = self.file_url
+            if base_url:
+                # Add download parameter to force download
+                if '?' in base_url:
+                    return f"{base_url}&fl_attachment"
+                else:
+                    return f"{base_url}?fl_attachment"
         return None
 
 class ResourceLike(models.Model):

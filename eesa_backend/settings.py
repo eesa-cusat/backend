@@ -5,9 +5,18 @@ Django settings for eesa_backend project.
 import os
 from pathlib import Path
 from django.core.management.utils import get_random_secret_key
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from .env file FIRST
+load_dotenv(BASE_DIR / '.env')
+
+# Cloudinary environment variables (define these AFTER loading .env)
+CLOUDINARY_CLOUD_NAME = os.environ.get('CLOUDINARY_CLOUD_NAME')
+CLOUDINARY_API_KEY = os.environ.get('CLOUDINARY_API_KEY')
+CLOUDINARY_API_SECRET = os.environ.get('CLOUDINARY_API_SECRET')
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get('SECRET_KEY', get_random_secret_key())
@@ -36,11 +45,11 @@ if not DEBUG:
     # Remove duplicates while preserving order
     ALLOWED_HOSTS = list(dict.fromkeys(ALLOWED_HOSTS))
     
-    # Debug ALLOWED_HOSTS in production (only if needed)
-    if os.environ.get('DEBUG_SETTINGS', 'False').lower() == 'true':
-        print(f"🔧 ALLOWED_HOSTS: {ALLOWED_HOSTS}")
-        print(f"🔧 DEBUG: {DEBUG}")
-        print(f"🔧 SECRET_KEY: {'SET' if SECRET_KEY else 'MISSING'}")
+    # Debug ALLOWED_HOSTS (only if explicitly enabled)
+    if DEBUG and os.environ.get('DEBUG_SETTINGS', 'False').lower() == 'true':
+        print(f"ALLOWED_HOSTS: {ALLOWED_HOSTS}")
+        print(f"DEBUG: {DEBUG}")
+        print(f"SECRET_KEY: {'SET' if SECRET_KEY else 'MISSING'}")
 
 # Application definition
 INSTALLED_APPS = [
@@ -141,60 +150,80 @@ STATICFILES_FINDERS = [
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
 ]
 
-# Base directory for static files
-STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_DIRS = [
-    BASE_DIR / 'static',
-]
-
-# Media files configuration
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
-
-# Cloudinary settings
-if not DEBUG:
-    CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL')
-    CLOUDINARY_CLOUD_NAME = os.environ.get('CLOUDINARY_CLOUD_NAME')
-    CLOUDINARY_API_KEY = os.environ.get('CLOUDINARY_API_KEY')
-    CLOUDINARY_API_SECRET = os.environ.get('CLOUDINARY_API_SECRET')
-    
-    # Debug logging for Cloudinary configuration
-    print("🔧 Cloudinary Configuration Check:")
-    print(f"   CLOUDINARY_URL: {'SET' if CLOUDINARY_URL else 'MISSING'}")
-    print(f"   CLOUDINARY_CLOUD_NAME: {'SET' if CLOUDINARY_CLOUD_NAME else 'MISSING'}")
-    print(f"   CLOUDINARY_API_KEY: {'SET' if CLOUDINARY_API_KEY else 'MISSING'}")
-    print(f"   CLOUDINARY_API_SECRET: {'SET' if CLOUDINARY_API_SECRET else 'MISSING'}")
-    
-    if CLOUDINARY_URL and CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
-        print("✅ All Cloudinary environment variables are set")
-        CLOUDINARY_STORAGE = {
-            'CLOUD_NAME': CLOUDINARY_CLOUD_NAME,
-            'API_KEY': CLOUDINARY_API_KEY,
-            'API_SECRET': CLOUDINARY_API_SECRET,
-            'SECURE': True
-        }
-        
-        # Override storage settings for Cloudinary
-        STATICFILES_STORAGE = 'cloudinary_storage.storage.StaticHashedCloudinaryStorage'
-        DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-        
-        # Update URLs for Cloudinary
-        STATIC_URL = f'https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/'
-        MEDIA_URL = f'https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/'
-        
-        print("✅ Cloudinary storage configured successfully")
-        print(f"   STATIC_URL: {STATIC_URL}")
-        print(f"   MEDIA_URL: {MEDIA_URL}")
-    else:
-        print("❌ Cloudinary configuration incomplete - files will be stored locally")
-        print("   Please set all required Cloudinary environment variables:")
-        print("   - CLOUDINARY_URL")
-        print("   - CLOUDINARY_CLOUD_NAME") 
-        print("   - CLOUDINARY_API_KEY")
-        print("   - CLOUDINARY_API_SECRET")
+# File storage configuration - Use local storage in development, Cloudinary in production
+if DEBUG:
+    # Development: Use local file storage
+    DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
 else:
-    print("🔧 Development mode - using local file storage")
+    # Production: Use Cloudinary for media files
+    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+
+# Static files configuration - Use local storage in development, Cloudinary in production
+if DEBUG:
+    # Development: Use local static files
+    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+    STATIC_URL = '/static/'
+    STATIC_ROOT = BASE_DIR / 'staticfiles'
+else:
+    # Production: Use Cloudinary for static files
+    STATICFILES_STORAGE = 'cloudinary_storage.storage.StaticHashedCloudinaryStorage'
+    STATIC_URL = f'https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/static/'
+
+# Cloudinary configuration - Only used in production
+if not DEBUG:
+    import cloudinary
+    import cloudinary.uploader
+    import cloudinary.api
+
+    cloudinary.config(
+        cloud_name=CLOUDINARY_CLOUD_NAME,
+        api_key=CLOUDINARY_API_KEY,
+        api_secret=CLOUDINARY_API_SECRET,
+        secure=True
+    )
+
+# Media URL configuration - Use local in development, Cloudinary in production
+if not DEBUG:
+    MEDIA_URL = f'https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/'
+
+# Cloudinary storage configuration - Only used in production
+if not DEBUG:
+    CLOUDINARY_STORAGE = {
+        'CLOUD_NAME': CLOUDINARY_CLOUD_NAME,
+        'API_KEY': CLOUDINARY_API_KEY,
+        'API_SECRET': CLOUDINARY_API_SECRET,
+        'STATICFILES_MANIFEST_ROOT': '',
+        'STATICFILES_MANIFEST_STRICT': False,
+        'STATICFILES_USE_MANIFEST': False,
+        'RESOURCE_TYPE': 'auto',  # Use 'auto' for better PDF handling and preview
+        'SECURE': True,
+        'INVALID_VIDEO_ERROR': False,
+        'STATIC_TRANSFORMATIONS': {
+            'pdf': {'resource_type': 'auto', 'format': 'pdf'},
+        },
+        # Additional settings for better PDF handling
+        'MAGIC_FILE_PATH': None,  # Disable magic file detection for better performance
+        'ALLOWED_EXTENSIONS': ['pdf'],  # Explicitly allow PDF files
+    }
+
+# STATIC_ROOT is already defined in the DEBUG conditional above
+
+# Cloudinary settings - Use Cloudinary for both development and production
+CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL')
+
+# Cloudinary configuration validation
+if DEBUG and not all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
+    print("Warning: Cloudinary configuration incomplete - will use local storage in development")
+    print("Please set all required Cloudinary environment variables for production:")
+    print("- CLOUDINARY_CLOUD_NAME") 
+    print("- CLOUDINARY_API_KEY")
+    print("- CLOUDINARY_API_SECRET")
+
+# Validate Cloudinary configuration for production
+if not DEBUG and not all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
+    raise ValueError("Cloudinary configuration required for production. Please set all required environment variables.")
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -255,9 +284,9 @@ else:
     cors_origins = os.environ.get('CORS_ALLOWED_ORIGINS', '')
     CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
     
-    # Debug CORS settings in production (only if needed)
-    if os.environ.get('DEBUG_SETTINGS', 'False').lower() == 'true':
-        print(f"🔧 CORS_ALLOWED_ORIGINS: {CORS_ALLOWED_ORIGINS}")
+    # Debug CORS settings (only if explicitly enabled)
+    if DEBUG and os.environ.get('DEBUG_SETTINGS', 'False').lower() == 'true':
+        print(f"CORS_ALLOWED_ORIGINS: {CORS_ALLOWED_ORIGINS}")
 
 # Additional CORS settings
 CORS_ALLOW_CREDENTIALS = True
@@ -301,45 +330,6 @@ CACHE_TTL = 60 * 60 * 24 * 365
 # Key prefix for cache to avoid conflicts
 CACHE_KEY_PREFIX = 'eesa_'
 
-# Static files (CSS, JavaScript, Images)
-STATICFILES_FINDERS = [
-    'django.contrib.staticfiles.finders.FileSystemFinder',
-    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
-]
-
-# Base directory for static files
-STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_DIRS = [
-    BASE_DIR / 'static',
-]
-
-# Media files configuration
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
-
-# Cloudinary settings
-if not DEBUG:
-    CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL')
-    
-    if CLOUDINARY_URL:  # Only configure if Cloudinary is set up
-        CLOUDINARY_STORAGE = {
-            'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
-            'API_KEY': os.environ.get('CLOUDINARY_API_KEY'),
-            'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET'),
-            'SECURE': True
-        }
-        
-        # Override storage settings for Cloudinary
-        STATICFILES_STORAGE = 'cloudinary_storage.storage.StaticHashedCloudinaryStorage'
-        DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-        
-        # Update URLs for Cloudinary
-        STATIC_URL = f'https://res.cloudinary.com/{os.environ.get("CLOUDINARY_CLOUD_NAME")}/raw/upload/'
-        MEDIA_URL = f'https://res.cloudinary.com/{os.environ.get("CLOUDINARY_CLOUD_NAME")}/raw/upload/'
-
-# WhiteNoise configuration
-MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
-WHITENOISE_USE_FINDERS = True
-WHITENOISE_AUTOREFRESH = True
-WHITENOISE_MANIFEST_STRICT = False
+# Storage configuration validation (only in development)
+if DEBUG and not all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
+    print("Warning: Cloudinary storage not properly configured")

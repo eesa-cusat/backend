@@ -161,7 +161,7 @@ class PlacedStudentSerializer(serializers.ModelSerializer):
             'id', 'student_name', 'student_email', 'roll_number',
             'batch_year', 'cgpa', 'company', 'company_details', 'placement_drive',
             'job_title', 'package_lpa', 'package_details', 'work_location',
-            'job_type', 'offer_date', 'joining_date', 'offer_letter',
+            'job_type', 'category', 'offer_date', 'joining_date', 'offer_letter',
             'student_photo', 'testimonial', 'is_verified', 'is_active',
             'created_at', 'updated_at', 'created_by'
         ]
@@ -174,12 +174,13 @@ class PlacedStudentListSerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(source='company.name', read_only=True)
     company_logo = serializers.ImageField(source='company.logo', read_only=True)
     job_type_display = serializers.CharField(source='get_job_type_display', read_only=True)
+    category_display = serializers.CharField(source='get_category_display', read_only=True)
     
     class Meta:
         model = PlacedStudent
         fields = [
             'id', 'student_name', 'batch_year', 'cgpa',
             'company_name', 'company_logo', 'job_title', 'package_lpa',
-            'work_location', 'job_type', 'job_type_display', 'offer_date',
+            'work_location', 'job_type', 'job_type_display', 'category', 'category_display', 'offer_date',
             'is_verified', 'created_at'
         ]

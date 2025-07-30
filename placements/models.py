@@ -26,7 +26,7 @@ def placement_brochure_upload_path(instance, filename):
     """Generate upload path for department placement brochures"""
     import os
     name, ext = os.path.splitext(filename)
-    return f'placement_brochures/eee_dept/{instance.academic_year.replace("-", "_")}/{filename}'
+    return f'placements/brochures/{instance.academic_year.replace("-", "_")}/{filename}'
 
 
 class Company(models.Model):
@@ -298,18 +298,25 @@ class PlacedStudent(models.Model):
         ('contract', 'Contract'),
     ], default='full_time')
     
+    # Category for filtering
+    category = models.CharField(max_length=20, choices=[
+        ('core', 'Core'),
+        ('tech', 'Tech'),
+        ('general', 'General'),
+    ], default='core', help_text="Category for filtering placements")
+    
     # Dates
     offer_date = models.DateField()
     joining_date = models.DateField(null=True, blank=True)
     
     # Additional information
     offer_letter = models.FileField(
-        upload_to='placement_offers/', 
+        upload_to='placements/offers/', 
         blank=True, 
         null=True,
         help_text="Upload offer letter (PDF only). Maximum file size: 15MB."
     )
-    student_photo = models.ImageField(upload_to='placed_students/', blank=True, null=True)
+    student_photo = models.ImageField(upload_to='placements/students/', blank=True, null=True)
     testimonial = models.TextField(blank=True, help_text="Student testimonial about placement")
     
     # Status
