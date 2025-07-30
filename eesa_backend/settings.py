@@ -170,6 +170,8 @@ else:
     # Production: Use Cloudinary for static files
     STATICFILES_STORAGE = 'cloudinary_storage.storage.StaticHashedCloudinaryStorage'
     STATIC_URL = f'https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/static/'
+    # STATIC_ROOT is still needed for collectstatic command
+    STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Cloudinary configuration - Only used in production
 if not DEBUG:
@@ -197,15 +199,18 @@ if not DEBUG:
         'STATICFILES_MANIFEST_ROOT': '',
         'STATICFILES_MANIFEST_STRICT': False,
         'STATICFILES_USE_MANIFEST': False,
-                        'RESOURCE_TYPE': 'raw',  # Use 'raw' for PDF files to ensure they're not treated as images
+        'RESOURCE_TYPE': 'raw',  # Use 'raw' for PDF files to ensure they're not treated as images
         'SECURE': True,
         'INVALID_VIDEO_ERROR': False,
-                        'STATIC_TRANSFORMATIONS': {
-                    'pdf': {'resource_type': 'raw', 'format': 'pdf'},
-                },
+        'STATIC_TRANSFORMATIONS': {
+            'pdf': {'resource_type': 'raw', 'format': 'pdf'},
+        },
         # Additional settings for better PDF handling
         'MAGIC_FILE_PATH': None,  # Disable magic file detection for better performance
         'ALLOWED_EXTENSIONS': ['pdf'],  # Explicitly allow PDF files
+        # Static files settings
+        'STATICFILES_DIRS': [],
+        'STATICFILES_STORAGE': 'cloudinary_storage.storage.StaticHashedCloudinaryStorage',
     }
 
 # STATIC_ROOT is already defined in the DEBUG conditional above
