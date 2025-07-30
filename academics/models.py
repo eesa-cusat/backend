@@ -133,7 +133,7 @@ class AcademicResource(models.Model):
         validators=[FileExtensionValidator(allowed_extensions=['pdf'])],
         help_text="Upload only PDF files. Maximum file size: 15MB.",
         max_length=255,  # Increased for Cloudinary URLs
-        storage=get_storage()
+        storage=get_storage
     )
     file_size = models.BigIntegerField(blank=True, null=True)
 

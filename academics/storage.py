@@ -18,8 +18,8 @@ if CLOUDINARY_AVAILABLE:
         
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
-            # Set resource type to 'auto' for better PDF handling and preview
-            self.resource_type = 'auto'
+            # Set resource type to 'raw' to ensure PDFs are not treated as images
+            self.resource_type = 'raw'
         
         def _save(self, name, content):
             """
@@ -41,11 +41,11 @@ if CLOUDINARY_AVAILABLE:
                     # Clean the name to avoid double extensions
                     clean_name = name.replace('.pdf', '') if name.endswith('.pdf') else name
                     
-                    # Upload to Cloudinary with auto resource type
+                    # Upload to Cloudinary with raw resource type to ensure PDFs are not treated as images
                     result = cloudinary.uploader.upload(
                         file_content,
                         public_id=clean_name,
-                        resource_type='auto',
+                        resource_type='raw',
                         format='pdf'
                     )
                     
@@ -74,11 +74,11 @@ if CLOUDINARY_AVAILABLE:
             
             # Ensure PDF URLs are properly formatted
             if name.lower().endswith('.pdf'):
-                # For auto resource type, the URL should already be correct
-                # But we can ensure it's using the right resource type
+                # For raw resource type, ensure we're using the correct URL format
                 if 'res.cloudinary.com' in url:
-                    # If it's using image upload, that's fine for auto resource type
-                    # If it's using raw upload, that's also fine
+                    # Make sure we're using raw upload URLs for PDFs
+                    if '/image/upload/' in url:
+                        url = url.replace('/image/upload/', '/raw/upload/')
                     return url
             
             return url 

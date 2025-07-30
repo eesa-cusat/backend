@@ -197,12 +197,12 @@ if not DEBUG:
         'STATICFILES_MANIFEST_ROOT': '',
         'STATICFILES_MANIFEST_STRICT': False,
         'STATICFILES_USE_MANIFEST': False,
-        'RESOURCE_TYPE': 'auto',  # Use 'auto' for better PDF handling and preview
+                        'RESOURCE_TYPE': 'raw',  # Use 'raw' for PDF files to ensure they're not treated as images
         'SECURE': True,
         'INVALID_VIDEO_ERROR': False,
-        'STATIC_TRANSFORMATIONS': {
-            'pdf': {'resource_type': 'auto', 'format': 'pdf'},
-        },
+                        'STATIC_TRANSFORMATIONS': {
+                    'pdf': {'resource_type': 'raw', 'format': 'pdf'},
+                },
         # Additional settings for better PDF handling
         'MAGIC_FILE_PATH': None,  # Disable magic file detection for better performance
         'ALLOWED_EXTENSIONS': ['pdf'],  # Explicitly allow PDF files
