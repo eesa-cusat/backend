@@ -226,6 +226,17 @@ if DEBUG and not all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_
     print("- CLOUDINARY_API_KEY")
     print("- CLOUDINARY_API_SECRET")
 
+# Production static files debugging
+if not DEBUG:
+    print("=== PRODUCTION STATIC FILES CONFIGURATION ===")
+    print(f"STATICFILES_STORAGE: {STATICFILES_STORAGE}")
+    print(f"STATIC_URL: {STATIC_URL}")
+    print(f"STATIC_ROOT: {STATIC_ROOT}")
+    print(f"CLOUDINARY_CLOUD_NAME: {CLOUDINARY_CLOUD_NAME}")
+    print(f"CLOUDINARY_API_KEY: {'SET' if CLOUDINARY_API_KEY else 'NOT SET'}")
+    print(f"CLOUDINARY_API_SECRET: {'SET' if CLOUDINARY_API_SECRET else 'NOT SET'}")
+    print("=============================================")
+
 # Validate Cloudinary configuration for production
 if not DEBUG and not all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
     raise ValueError("Cloudinary configuration required for production. Please set all required environment variables.")
