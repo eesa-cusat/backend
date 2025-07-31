@@ -26,6 +26,7 @@ FROM python:3.11-slim as production
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 ENV DEBUG False
+ENV DOCKER_BUILD 1
 
 # Install runtime dependencies only
 RUN apt-get update \
@@ -56,17 +57,20 @@ RUN rm -rf /app/staticfiles/* || true
 # Switch to django user
 USER django
 
-# Upload static files to Cloudinary during build (as django user)
-RUN python manage.py shell -c "from eesa_backend.management.commands.upload_static_to_cloudinary import Command; cmd = Command(); cmd.handle(clear=True)"
+# Note: Static files will be uploaded at runtime when environment variables are available
 
 # Create startup script with proper environment handling
 RUN echo '#!/bin/bash\n\
 # Run migrations\n\
 python manage.py migrate --noinput\n\
 \n\
-# Upload static files to Cloudinary if not already done\n\
-echo "Uploading static files to Cloudinary..."\n\
-python manage.py shell -c "from eesa_backend.management.commands.upload_static_to_cloudinary import Command; cmd = Command(); cmd.handle(clear=True)"\n\
+# Upload static files to Cloudinary if environment variables are available\n\
+if [ -n "$CLOUDINARY_CLOUD_NAME" ] && [ -n "$CLOUDINARY_API_KEY" ] && [ -n "$CLOUDINARY_API_SECRET" ]; then\n\
+    echo "Uploading static files to Cloudinary..."\n\
+    python manage.py shell -c "from eesa_backend.management.commands.upload_static_to_cloudinary import Command; cmd = Command(); cmd.handle(clear=True)"\n\
+else\n\
+    echo "Cloudinary environment variables not available, skipping static file upload"\n\
+fi\n\
 \n\
 # Start Gunicorn\n\
 exec gunicorn eesa_backend.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 2 --timeout 120\n\

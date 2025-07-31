@@ -240,8 +240,11 @@ if not DEBUG and os.environ.get('DEBUG_SETTINGS', 'False').lower() == 'true':
     print("=============================================")
 
 # Validate Cloudinary configuration for production
+# Skip validation during Docker build (when environment variables might not be available)
 if not DEBUG and not all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
-    raise ValueError("Cloudinary configuration required for production. Please set all required environment variables.")
+    # Check if we're in a build context by looking for common build environment variables
+    if not os.environ.get('DOCKER_BUILD', ''):
+        raise ValueError("Cloudinary configuration required for production. Please set all required environment variables.")
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
