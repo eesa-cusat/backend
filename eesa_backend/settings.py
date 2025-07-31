@@ -208,9 +208,9 @@ if not DEBUG:
         # Additional settings for better PDF handling
         'MAGIC_FILE_PATH': None,  # Disable magic file detection for better performance
         'ALLOWED_EXTENSIONS': ['pdf'],  # Explicitly allow PDF files
-        # Static files settings - ensure files go to static folder
+        # Static files settings - use static prefix for organization
         'STATICFILES_DIRS': [],
-        'STATICFILES_PREFIX': 'static/',  # Add prefix to ensure files go to static folder
+        'STATICFILES_PREFIX': 'static/',  # Add prefix for logical organization
         # Additional static files configuration
         'STATICFILES_STORAGE': 'cloudinary_storage.storage.StaticHashedCloudinaryStorage',
     }

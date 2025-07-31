@@ -124,7 +124,8 @@ class Command(BaseCommand):
                     failed_count += 1
                     continue
                 
-                # Create the public_id with static prefix
+                # Create the public_id with static prefix for organization
+                # In Dynamic folders mode, this provides logical organization
                 public_id = f"static/{static_file}"
                 
                 self.stdout.write(f"📤 Uploading: {static_file}")
@@ -162,7 +163,7 @@ class Command(BaseCommand):
             )
             
             cloudinary_files = result.get('resources', [])
-            self.stdout.write(f"Files in Cloudinary static folder: {len(cloudinary_files)}")
+            self.stdout.write(f"Files with static prefix: {len(cloudinary_files)}")
             
         except Exception as e:
             self.stdout.write(f"Error verifying uploads: {e}")
