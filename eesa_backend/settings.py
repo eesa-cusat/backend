@@ -168,7 +168,7 @@ if DEBUG:
     STATIC_ROOT = BASE_DIR / 'staticfiles'
 else:
     # Production: Use Cloudinary for static files
-    STATICFILES_STORAGE = 'cloudinary_storage.storage.StaticHashedCloudinaryStorage'
+    STATICFILES_STORAGE = 'eesa_backend.storage.CustomStaticHashedCloudinaryStorage'
     STATIC_URL = f'https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/static/'
     # STATIC_ROOT is still needed for collectstatic command
     STATIC_ROOT = BASE_DIR / 'staticfiles'
@@ -208,9 +208,9 @@ if not DEBUG:
         # Additional settings for better PDF handling
         'MAGIC_FILE_PATH': None,  # Disable magic file detection for better performance
         'ALLOWED_EXTENSIONS': ['pdf'],  # Explicitly allow PDF files
-        # Static files settings
+        # Static files settings - ensure files go to static folder
         'STATICFILES_DIRS': [],
-        'STATICFILES_STORAGE': 'cloudinary_storage.storage.StaticHashedCloudinaryStorage',
+        'STATICFILES_PREFIX': 'static/',  # Add prefix to ensure files go to static folder
     }
 
 # STATIC_ROOT is already defined in the DEBUG conditional above
