@@ -168,7 +168,7 @@ if DEBUG:
     STATIC_ROOT = BASE_DIR / 'staticfiles'
 else:
     # Production: Use Cloudinary for static files
-    STATICFILES_STORAGE = 'eesa_backend.storage.CustomStaticHashedCloudinaryStorage'
+    STATICFILES_STORAGE = 'cloudinary_storage.storage.StaticHashedCloudinaryStorage'
     STATIC_URL = f'https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/static/'
     # STATIC_ROOT is still needed for collectstatic command
     STATIC_ROOT = BASE_DIR / 'staticfiles'
@@ -211,6 +211,8 @@ if not DEBUG:
         # Static files settings - ensure files go to static folder
         'STATICFILES_DIRS': [],
         'STATICFILES_PREFIX': 'static/',  # Add prefix to ensure files go to static folder
+        # Additional static files configuration
+        'STATICFILES_STORAGE': 'cloudinary_storage.storage.StaticHashedCloudinaryStorage',
     }
 
 # STATIC_ROOT is already defined in the DEBUG conditional above
@@ -226,8 +228,8 @@ if DEBUG and not all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_
     print("- CLOUDINARY_API_KEY")
     print("- CLOUDINARY_API_SECRET")
 
-# Production static files debugging
-if not DEBUG:
+# Production static files debugging (only if explicitly enabled)
+if not DEBUG and os.environ.get('DEBUG_SETTINGS', 'False').lower() == 'true':
     print("=== PRODUCTION STATIC FILES CONFIGURATION ===")
     print(f"STATICFILES_STORAGE: {STATICFILES_STORAGE}")
     print(f"STATIC_URL: {STATIC_URL}")

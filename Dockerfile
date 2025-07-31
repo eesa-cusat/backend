@@ -51,28 +51,22 @@ RUN mkdir -p /app/staticfiles /app/media \
     && chmod -R 755 /app/staticfiles /app/media
 
 # Remove existing staticfiles to ensure fresh collection during build
-RUN rm -rf /app/staticfiles/*
+RUN rm -rf /app/staticfiles/* || true
 
 # Switch to django user
 USER django
+
+# Upload static files to Cloudinary during build (as django user)
+RUN python manage.py upload_static_to_cloudinary --clear
 
 # Create startup script with proper environment handling
 RUN echo '#!/bin/bash\n\
 # Run migrations\n\
 python manage.py migrate --noinput\n\
 \n\
-# Debug static files configuration\n\
-echo "Debugging static files configuration..."\n\
-python manage.py debug_static\n\
-\n\
-# Always collect static files (this will upload to Cloudinary in production)\n\
-echo "Collecting static files..."\n\
-python manage.py collectstatic --noinput --clear --verbosity=2\n\
-\n\
-# Verify static files were collected\n\
-echo "Static files collected:"\n\
-ls -la /app/staticfiles/ || echo "No staticfiles directory"\n\
-ls -la /app/staticfiles/admin/ || echo "No admin directory"\n\
+# Upload static files to Cloudinary if not already done\n\
+echo "Uploading static files to Cloudinary..."\n\
+python manage.py upload_static_to_cloudinary --clear\n\
 \n\
 # Start Gunicorn\n\
 exec gunicorn eesa_backend.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 2 --timeout 120\n\
