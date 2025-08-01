@@ -64,13 +64,8 @@ RUN echo '#!/bin/bash\n\
 # Run migrations\n\
 python manage.py migrate --noinput\n\
 \n\
-# Upload static files to Cloudinary if environment variables are available\n\
-if [ -n "$CLOUDINARY_CLOUD_NAME" ] && [ -n "$CLOUDINARY_API_KEY" ] && [ -n "$CLOUDINARY_API_SECRET" ]; then\n\
-    echo "Uploading static files to Cloudinary..."\n\
-    python manage.py shell -c "from eesa_backend.management.commands.upload_static_to_cloudinary import Command; cmd = Command(); cmd.handle(clear=True)"\n\
-else\n\
-    echo "Cloudinary environment variables not available, skipping static file upload"\n\
-fi\n\
+# Collect static files (Cloudinary handles them automatically)\n\
+python manage.py collectstatic --noinput\n\
 \n\
 # Start Gunicorn\n\
 exec gunicorn eesa_backend.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 2 --timeout 120\n\

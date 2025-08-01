@@ -3,26 +3,6 @@ from django.contrib.auth import get_user_model
 from django.core.validators import FileExtensionValidator
 from django.core.exceptions import ValidationError
 from django.conf import settings
-from django.core.files.storage import FileSystemStorage
-
-# Import Cloudinary storage only in production
-if not settings.DEBUG:
-    from cloudinary_storage.storage import MediaCloudinaryStorage
-    from .storage import PDFCloudinaryStorage
-
-def get_storage():
-    """Get the appropriate storage backend based on environment"""
-    if settings.DEBUG:
-        return FileSystemStorage()
-    else:
-        try:
-            from .storage import PDFCloudinaryStorage, CLOUDINARY_AVAILABLE
-            if CLOUDINARY_AVAILABLE:
-                return PDFCloudinaryStorage()
-            else:
-                return FileSystemStorage()
-        except ImportError:
-            return FileSystemStorage()
 
 User = get_user_model()
 
@@ -132,8 +112,7 @@ class AcademicResource(models.Model):
         upload_to=academic_resource_upload_path,
         validators=[FileExtensionValidator(allowed_extensions=['pdf'])],
         help_text="Upload only PDF files. Maximum file size: 15MB.",
-        max_length=255,  # Increased for Cloudinary URLs
-        storage=get_storage
+        max_length=255,
     )
     file_size = models.BigIntegerField(blank=True, null=True)
 
