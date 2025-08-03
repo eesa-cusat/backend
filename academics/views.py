@@ -30,7 +30,7 @@ def schemes_list(request):
         schemes_data.append({
             'id': scheme.id,
             'name': scheme.name,
-            'description': scheme.description,
+            'year': scheme.year,
             'is_active': scheme.is_active,
         })
     return Response(schemes_data)

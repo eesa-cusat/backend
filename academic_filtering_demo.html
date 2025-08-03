@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EESA Academic Resources - Filtering Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .filters {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .filter-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #495057;
+        }
+        
+        select, input {
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .search-box {
+            grid-column: 1 / -1;
+        }
+        
+        .search-box input {
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        .clear-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .clear-btn:hover {
+            background: #c82333;
+        }
+        
+        .results {
+            margin-top: 20px;
+        }
+        
+        .resource-card {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .resource-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+        
+        .resource-meta {
+            color: #6c757d;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        
+        .category-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .category-notes { background: #e3f2fd; color: #1565c0; }
+        .category-textbook { background: #e8f5e8; color: #2e7d32; }
+        .category-pyq { background: #fff3e0; color: #ef6c00; }
+        .category-regulations { background: #f3e5f5; color: #7b1fa2; }
+        .category-syllabus { background: #fce4ec; color: #c2185b; }
+        
+        .stats {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #6c757d;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+        
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+        
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        
+        .results-count {
+            margin-bottom: 20px;
+            color: #495057;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎓 EESA Academic Resources</h1>
+        <p>Filter and search through academic resources (notes, textbooks, previous year questions, etc.)</p>
+        
+        <div class="filters">
+            <h3>📋 Filters</h3>
+            
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label for="category">Category</label>
+                    <select id="category">
+                        <option value="">All Categories</option>
+                        <option value="notes">Notes</option>
+                        <option value="textbook">Textbooks</option>
+                        <option value="pyq">Previous Year Questions</option>
+                        <option value="regulations">Regulations</option>
+                        <option value="syllabus">Syllabus</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label for="scheme">Scheme</label>
+                    <select id="scheme">
+                        <option value="">All Schemes</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label for="semester">Semester</label>
+                    <select id="semester">
+                        <option value="">All Semesters</option>
+                        <option value="1">Semester 1</option>
+                        <option value="2">Semester 2</option>
+                        <option value="3">Semester 3</option>
+                        <option value="4">Semester 4</option>
+                        <option value="5">Semester 5</option>
+                        <option value="6">Semester 6</option>
+                        <option value="7">Semester 7</option>
+                        <option value="8">Semester 8</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label for="subject">Subject</label>
+                    <select id="subject">
+                        <option value="">All Subjects</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="filter-row">
+                <div class="filter-group search-box">
+                    <label for="search">Search</label>
+                    <input type="text" id="search" placeholder="Search in titles, descriptions, subjects, or codes...">
+                </div>
+            </div>
+            
+            <button class="clear-btn" onclick="clearFilters()">🗑️ Clear All Filters</button>
+        </div>
+        
+        <div id="results-section">
+            <div class="loading" id="loading">Loading resources...</div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration - Replace with your actual backend URL
+        const API_BASE_URL = 'http://localhost:8000/api/academics';
+        
+        let allSchemes = [];
+        let allSubjects = [];
+        
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSchemes();
+            loadResources();
+            
+            // Add event listeners for filters
+            document.getElementById('category').addEventListener('change', loadResources);
+            document.getElementById('scheme').addEventListener('change', function() {
+                loadSubjects();
+                loadResources();
+            });
+            document.getElementById('semester').addEventListener('change', function() {
+                loadSubjects();
+                loadResources();
+            });
+            document.getElementById('subject').addEventListener('change', loadResources);
+            
+            // Add debounced search
+            let searchTimeout;
+            document.getElementById('search').addEventListener('input', function() {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(loadResources, 500);
+            });
+        });
+        
+        // Load schemes for the dropdown
+        async function loadSchemes() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/schemes/`);
+                const schemes = await response.json();
+                allSchemes = schemes;
+                
+                const schemeSelect = document.getElementById('scheme');
+                schemeSelect.innerHTML = '<option value="">All Schemes</option>';
+                
+                schemes.forEach(scheme => {
+                    const option = document.createElement('option');
+                    option.value = scheme.id;
+                    option.textContent = `${scheme.name} (${scheme.year})`;
+                    schemeSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading schemes:', error);
+            }
+        }
+        
+        // Load subjects based on scheme and semester
+        async function loadSubjects() {
+            const schemeId = document.getElementById('scheme').value;
+            const semester = document.getElementById('semester').value;
+            const subjectSelect = document.getElementById('subject');
+            
+            subjectSelect.innerHTML = '<option value="">All Subjects</option>';
+            
+            if (schemeId && semester) {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/subjects/?scheme=${schemeId}&semester=${semester}`);
+                    const subjects = await response.json();
+                    allSubjects = subjects;
+                    
+                    subjects.forEach(subject => {
+                        const option = document.createElement('option');
+                        option.value = subject.id;
+                        option.textContent = `${subject.name} (${subject.code})`;
+                        subjectSelect.appendChild(option);
+                    });
+                } catch (error) {
+                    console.error('Error loading subjects:', error);
+                }
+            }
+        }
+        
+        // Load resources with current filters
+        async function loadResources() {
+            const loadingEl = document.getElementById('loading');
+            const resultsSection = document.getElementById('results-section');
+            
+            // Show loading
+            resultsSection.innerHTML = '<div class="loading">Loading resources...</div>';
+            
+            try {
+                // Build query parameters
+                const params = new URLSearchParams();
+                
+                const category = document.getElementById('category').value;
+                const scheme = document.getElementById('scheme').value;
+                const semester = document.getElementById('semester').value;
+                const subject = document.getElementById('subject').value;
+                const search = document.getElementById('search').value;
+                
+                if (category) params.append('category', category);
+                if (scheme) params.append('scheme', scheme);
+                if (semester) params.append('semester', semester);
+                if (subject) params.append('subject', subject);
+                if (search) params.append('search', search);
+                
+                const url = `${API_BASE_URL}/resources/?${params.toString()}`;
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                displayResults(data.results, data.count);
+                
+            } catch (error) {
+                console.error('Error loading resources:', error);
+                resultsSection.innerHTML = `
+                    <div class="error">
+                        ❌ Error loading resources: ${error.message}
+                        <br>Make sure the backend server is running on localhost:8000
+                    </div>
+                `;
+            }
+        }
+        
+        // Display search results
+        function displayResults(resources, count) {
+            const resultsSection = document.getElementById('results-section');
+            
+            if (resources.length === 0) {
+                resultsSection.innerHTML = `
+                    <div class="no-results">
+                        <h3>📭 No resources found</h3>
+                        <p>Try adjusting your filters or search terms.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = `<div class="results-count">📚 Found ${count} resources</div>`;
+            
+            resources.forEach(resource => {
+                const categoryClass = `category-${resource.category}`;
+                const moduleText = resource.module_number > 0 ? ` • Module ${resource.module_number}` : '';
+                
+                html += `
+                    <div class="resource-card">
+                        <div class="resource-title">${resource.title}</div>
+                        <div class="resource-meta">
+                            <strong>${resource.subject.name}</strong> (${resource.subject.code})
+                            <br>
+                            Semester ${resource.subject.semester} • ${resource.subject.scheme.name}${moduleText}
+                        </div>
+                        <div>
+                            <span class="category-badge ${categoryClass}">${resource.category}</span>
+                        </div>
+                        <div class="stats">
+                            <span>👍 ${resource.like_count} likes</span>
+                            <span>📥 ${resource.download_count} downloads</span>
+                            <span>📁 ${(resource.file_size_mb || 0).toFixed(1)} MB</span>
+                            <span>📅 ${new Date(resource.created_at).toLocaleDateString()}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            resultsSection.innerHTML = html;
+        }
+        
+        // Clear all filters
+        function clearFilters() {
+            document.getElementById('category').value = '';
+            document.getElementById('scheme').value = '';
+            document.getElementById('semester').value = '';
+            document.getElementById('subject').value = '';
+            document.getElementById('search').value = '';
+            
+            // Reset subjects dropdown
+            document.getElementById('subject').innerHTML = '<option value="">All Subjects</option>';
+            
+            loadResources();
+        }
+    </script>
+</body>
+</html>
