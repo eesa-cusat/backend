@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
+from . import notification_views
 
 # Create router for viewsets
 router = DefaultRouter()
@@ -20,4 +21,11 @@ urlpatterns = [
     path('stats/', views.event_stats, name='event-stats'),
     path('quick-register/', views.quick_register, name='quick-register'),
     path('submit-feedback/', views.submit_feedback, name='submit-feedback'),
+    
+    # Notification endpoints
+    path('notifications/', notification_views.active_notifications, name='active-notifications'),
+    path('notifications/marquee/', notification_views.marquee_notifications, name='marquee-notifications'),
+    path('notifications/settings/', notification_views.notification_settings, name='notification-settings'),
+    path('notifications/type/<str:notification_type>/', notification_views.notifications_by_type, name='notifications-by-type'),
+    path('notifications/<int:pk>/click/', notification_views.notification_clicked, name='notification-clicked'),
 ]

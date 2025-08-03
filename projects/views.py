@@ -35,7 +35,7 @@ def projects_list(request):
             size = int(team_size)
             # Filter by team count (creator + team members)
             queryset = queryset.annotate(
-                total_team_count=models.Count('team_members') + 1
+                total_team_count=Count('team_members') + 1
             ).filter(total_team_count=size)
         except ValueError:
             pass
@@ -163,8 +163,12 @@ def my_projects(request):
 @permission_classes([permissions.AllowAny])
 def featured_projects(request):
     """Get featured projects for homepage"""
-    # Get latest 6 projects for homepage display
-    projects = Project.objects.order_by('-created_at')[:6].select_related('created_by')
+    # Get featured projects that are published
+    projects = Project.objects.filter(
+        is_featured=True,
+        is_published=True
+    ).order_by('-created_at')[:6].select_related('created_by')
+    
     return Response({
         'featured_projects': ProjectListSerializer(projects, many=True).data
     })

@@ -33,6 +33,9 @@ else:
 # Production-specific allowed hosts
 if not DEBUG:
     ALLOWED_HOSTS.extend([
+        'eesacusat.in',
+        'www.eesacusat.in',
+        '*.eesacusat.in',
         '*.onrender.com',
         'eesabackend.onrender.com',
         '*.railway.app',
@@ -239,7 +242,8 @@ if DEBUG:
     CORS_ALLOWED_ORIGINS = [origin.strip() for origin in dev_cors.split(',') if origin.strip()]
 else:
     # Production CORS settings
-    cors_origins = os.environ.get('CORS_ALLOWED_ORIGINS', '')
+    cors_origins = os.environ.get('CORS_ALLOWED_ORIGINS', 
+                                 'https://eesacusat.in,https://www.eesacusat.in')
     CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -263,6 +267,18 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
+
+# CSRF configuration
+if DEBUG:
+    # Development CSRF settings - allow frontend origins
+    dev_csrf = os.environ.get('DEV_CSRF_TRUSTED_ORIGINS', 
+                             'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173')
+    CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in dev_csrf.split(',') if origin.strip()]
+else:
+    # Production CSRF settings
+    csrf_origins = os.environ.get('CSRF_TRUSTED_ORIGINS', 
+                                 'https://eesacusat.in,https://www.eesacusat.in')
+    CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in csrf_origins.split(',') if origin.strip()]
 
 # Admin site customization
 ADMIN_SITE_HEADER = "EESA Backend Administration"
@@ -289,3 +305,7 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

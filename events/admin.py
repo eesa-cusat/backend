@@ -7,7 +7,7 @@ from django.db.models import Count, Sum, Q
 from django.utils import timezone
 
 import csv
-from .models import Event, EventRegistration, EventSpeaker, EventSchedule
+from .models import Event, EventRegistration, EventSpeaker, EventSchedule, Notification, NotificationSettings
 
 
 class EventScheduleInline(admin.TabularInline):
@@ -235,3 +235,112 @@ class EventRegistrationAdmin(admin.ModelAdmin):
 
 
 # EventFeedback removed from admin - feedback managed through event interface
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = [
+        'title', 'notification_type', 'priority', 'is_active', 
+        'is_marquee', 'start_date', 'end_date', 'view_count', 'click_count'
+    ]
+    list_filter = [
+        'notification_type', 'priority', 'is_active', 'is_marquee', 
+        'start_date', 'created_at'
+    ]
+    search_fields = ['title', 'message']
+    list_editable = ['is_active', 'is_marquee', 'priority']
+    readonly_fields = ['view_count', 'click_count', 'created_at', 'updated_at']
+    date_hierarchy = 'created_at'
+    
+    fieldsets = (
+        ('Content', {
+            'fields': ('title', 'message', 'notification_type', 'priority')
+        }),
+        ('Display Settings', {
+            'fields': ('is_active', 'is_marquee', 'display_duration')
+        }),
+        ('Scheduling', {
+            'fields': ('start_date', 'end_date'),
+            'description': 'Control when the notification is shown'
+        }),
+        ('Actions', {
+            'fields': ('action_url', 'action_text'),
+            'classes': ('collapse',)
+        }),
+        ('Styling', {
+            'fields': ('background_color', 'text_color'),
+            'classes': ('collapse',)
+        }),
+        ('Analytics', {
+            'fields': ('view_count', 'click_count'),
+            'classes': ('collapse',)
+        }),
+        ('Meta', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        })
+    )
+    
+    def save_model(self, request, obj, form, change):
+        if not change:  # If creating new notification
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('created_by')
+    
+    actions = ['mark_as_active', 'mark_as_inactive', 'mark_for_marquee', 'remove_from_marquee']
+    
+    def mark_as_active(self, request, queryset):
+        queryset.update(is_active=True)
+        self.message_user(request, f'{queryset.count()} notifications marked as active.')
+    mark_as_active.short_description = 'Mark as active'
+    
+    def mark_as_inactive(self, request, queryset):
+        queryset.update(is_active=False)
+        self.message_user(request, f'{queryset.count()} notifications marked as inactive.')
+    mark_as_inactive.short_description = 'Mark as inactive'
+    
+    def mark_for_marquee(self, request, queryset):
+        queryset.update(is_marquee=True)
+        self.message_user(request, f'{queryset.count()} notifications added to marquee.')
+    mark_for_marquee.short_description = 'Add to marquee'
+    
+    def remove_from_marquee(self, request, queryset):
+        queryset.update(is_marquee=False)
+        self.message_user(request, f'{queryset.count()} notifications removed from marquee.')
+    remove_from_marquee.short_description = 'Remove from marquee'
+
+
+@admin.register(NotificationSettings)
+class NotificationSettingsAdmin(admin.ModelAdmin):
+    list_display = ['__str__', 'marquee_speed', 'max_notifications_display', 'auto_refresh_interval', 'updated_at']
+    readonly_fields = ['updated_at']
+    
+    fieldsets = (
+        ('Marquee Settings', {
+            'fields': ('marquee_speed', 'marquee_pause_on_hover', 'max_notifications_display')
+        }),
+        ('Display Settings', {
+            'fields': ('show_date', 'show_type_icon', 'enable_sound')
+        }),
+        ('Auto-refresh', {
+            'fields': ('auto_refresh_interval',)
+        }),
+        ('Meta', {
+            'fields': ('updated_at',),
+            'classes': ('collapse',)
+        })
+    )
+    
+    def save_model(self, request, obj, form, change):
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
+    
+    def has_add_permission(self, request):
+        # Only allow one settings instance
+        return not NotificationSettings.objects.exists()
+    
+    def has_delete_permission(self, request, obj=None):
+        # Don't allow deletion of settings
+        return False

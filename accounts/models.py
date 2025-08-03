@@ -71,4 +71,4 @@ class TeamMember(models.Model):
         verbose_name_plural = "Team Members"
     
     def __str__(self):
-        return f"{self.name} - {self.position} ({self.get_team_type_display()})" 
+        return f"{self.name} - {self.position} ({self.get_team_type_display()})"

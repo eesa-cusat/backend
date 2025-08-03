@@ -48,6 +48,25 @@ coverage.xml
 *.cover
 *.py,cover
 .hypothesis/
+
+# Production files - keep locally but don't push
+populate_simple.py
+populate_test_data.py
+**/populate_*.py
+test_*.py
+**/test_*.py
+
+# Documentation files (keep local only)
+*.md
+!README.md
+DEPLOYMENT_GUIDE.md
+PRODUCTION_CHECKLIST.md
+
+# Database files
+db.sqlite3
+*.db
+*.sqlite
+*.sqlite3
 .pytest_cache/
 cover/
 

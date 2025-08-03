@@ -305,3 +305,207 @@ class EventFeedback(models.Model):
     def __str__(self):
         return f"Feedback for {self.event.title} by {self.registration.name}"
 
+
+class Notification(models.Model):
+    """Model for managing scrolling marquee notifications"""
+    
+    PRIORITY_CHOICES = [
+        ('low', 'Low'),
+        ('normal', 'Normal'),
+        ('high', 'High'),
+        ('urgent', 'Urgent'),
+    ]
+    
+    TYPE_CHOICES = [
+        ('info', 'Information'),
+        ('warning', 'Warning'),
+        ('success', 'Success'),
+        ('error', 'Error'),
+        ('event', 'Event'),
+        ('announcement', 'Announcement'),
+    ]
+    
+    # Content
+    title = models.CharField(max_length=200, help_text="Brief notification title")
+    message = models.TextField(help_text="Notification message content")
+    
+    # Categorization
+    notification_type = models.CharField(
+        max_length=20, 
+        choices=TYPE_CHOICES, 
+        default='info',
+        help_text="Type of notification for styling"
+    )
+    priority = models.CharField(
+        max_length=10, 
+        choices=PRIORITY_CHOICES, 
+        default='normal',
+        help_text="Priority affects display order"
+    )
+    
+    # Display Settings
+    is_active = models.BooleanField(
+        default=True, 
+        help_text="Whether notification is currently displayed"
+    )
+    is_marquee = models.BooleanField(
+        default=True, 
+        help_text="Include in scrolling marquee"
+    )
+    display_duration = models.PositiveIntegerField(
+        default=0, 
+        help_text="Display duration in seconds (0 = permanent)"
+    )
+    
+    # Scheduling
+    start_date = models.DateTimeField(
+        default=timezone.now,
+        help_text="When notification becomes active"
+    )
+    end_date = models.DateTimeField(
+        null=True, 
+        blank=True,
+        help_text="When notification expires (optional)"
+    )
+    
+    # Links and Actions
+    action_url = models.URLField(
+        blank=True, 
+        null=True,
+        help_text="Optional link for 'Learn More' action"
+    )
+    action_text = models.CharField(
+        max_length=50, 
+        blank=True, 
+        null=True,
+        help_text="Text for action button"
+    )
+    
+    # Styling
+    background_color = models.CharField(
+        max_length=7, 
+        default='#007bff',
+        help_text="Background color (hex code)"
+    )
+    text_color = models.CharField(
+        max_length=7, 
+        default='#ffffff',
+        help_text="Text color (hex code)"
+    )
+    
+    # Management
+    created_by = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='created_notifications'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    # Analytics
+    view_count = models.PositiveIntegerField(default=0)
+    click_count = models.PositiveIntegerField(default=0)
+    
+    class Meta:
+        ordering = ['-priority', '-created_at']
+        indexes = [
+            models.Index(fields=['is_active', 'is_marquee']),
+            models.Index(fields=['start_date', 'end_date']),
+            models.Index(fields=['priority', 'notification_type']),
+        ]
+    
+    def __str__(self):
+        return f"{self.title} ({self.get_priority_display()})"
+    
+    @property
+    def is_currently_active(self):
+        """Check if notification is currently active based on dates"""
+        now = timezone.now()
+        if not self.is_active:
+            return False
+        if self.start_date > now:
+            return False
+        if self.end_date and self.end_date < now:
+            return False
+        return True
+    
+    @property
+    def priority_weight(self):
+        """Numeric weight for sorting by priority"""
+        weights = {'low': 1, 'normal': 2, 'high': 3, 'urgent': 4}
+        return weights.get(self.priority, 2)
+    
+    def increment_view_count(self):
+        """Increment view count"""
+        self.view_count += 1
+        self.save(update_fields=['view_count'])
+    
+    def increment_click_count(self):
+        """Increment click count"""
+        self.click_count += 1
+        self.save(update_fields=['click_count'])
+
+
+class NotificationSettings(models.Model):
+    """Global settings for notification system"""
+    
+    # Marquee Settings
+    marquee_speed = models.PositiveIntegerField(
+        default=50,
+        help_text="Marquee scroll speed (pixels per second)"
+    )
+    marquee_pause_on_hover = models.BooleanField(
+        default=True,
+        help_text="Pause marquee when user hovers"
+    )
+    max_notifications_display = models.PositiveIntegerField(
+        default=5,
+        help_text="Maximum notifications to show in marquee"
+    )
+    
+    # Display Settings
+    show_date = models.BooleanField(
+        default=True,
+        help_text="Show notification date"
+    )
+    show_type_icon = models.BooleanField(
+        default=True,
+        help_text="Show type-specific icons"
+    )
+    enable_sound = models.BooleanField(
+        default=False,
+        help_text="Play sound for urgent notifications"
+    )
+    
+    # Auto-refresh
+    auto_refresh_interval = models.PositiveIntegerField(
+        default=30,
+        help_text="Auto-refresh interval in seconds"
+    )
+    
+    # Management
+    updated_by = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='notification_settings_updates'
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Notification Settings"
+        verbose_name_plural = "Notification Settings"
+    
+    def __str__(self):
+        return f"Notification Settings (Updated: {self.updated_at})"
+    
+    @classmethod
+    def get_settings(cls):
+        """Get current settings or create default"""
+        settings = cls.objects.first()
+        if not settings:
+            # Create default settings with admin user
+            admin_user = User.objects.filter(is_superuser=True).first()
+            if admin_user:
+                settings = cls.objects.create(updated_by=admin_user)
+        return settings
+

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Event, EventRegistration, EventSpeaker, EventSchedule, EventFeedback
+from .models import Event, EventRegistration, EventSpeaker, EventSchedule, EventFeedback, Notification, NotificationSettings
 
 
 class EventSpeakerSerializer(serializers.ModelSerializer):
@@ -161,3 +161,52 @@ class EventRegistrationCreateSerializer(serializers.ModelSerializer):
         # We can't check here since we don't have access to the event yet
         # This validation will be done in the view
         return value
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    """Serializer for Notification model"""
+    
+    created_by_name = serializers.SerializerMethodField()
+    is_currently_active = serializers.ReadOnlyField()
+    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+    type_display = serializers.CharField(source='get_notification_type_display', read_only=True)
+    
+    class Meta:
+        model = Notification
+        fields = [
+            'id', 'title', 'message', 'notification_type', 'type_display',
+            'priority', 'priority_display', 'is_active', 'is_marquee',
+            'display_duration', 'start_date', 'end_date', 'action_url',
+            'action_text', 'background_color', 'text_color', 'created_by_name',
+            'created_at', 'updated_at', 'view_count', 'click_count',
+            'is_currently_active'
+        ]
+    
+    def get_created_by_name(self, obj):
+        """Get creator's full name or username"""
+        if obj.created_by:
+            full_name = f"{obj.created_by.first_name} {obj.created_by.last_name}".strip()
+            return full_name if full_name else obj.created_by.username
+        return None
+
+
+class NotificationSettingsSerializer(serializers.ModelSerializer):
+    """Serializer for NotificationSettings model"""
+    
+    updated_by_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = NotificationSettings
+        fields = [
+            'id', 'marquee_speed', 'marquee_pause_on_hover', 
+            'max_notifications_display', 'show_date', 'show_type_icon',
+            'enable_sound', 'auto_refresh_interval', 'updated_by_name',
+            'updated_at'
+        ]
+    
+    def get_updated_by_name(self, obj):
+        """Get updater's full name or username"""
+        if obj.updated_by:
+            full_name = f"{obj.updated_by.first_name} {obj.updated_by.last_name}".strip()
+            return full_name if full_name else obj.updated_by.username
+        return None
