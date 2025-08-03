@@ -146,18 +146,18 @@ if DEBUG:
     STATIC_URL = '/static/'
     STATIC_ROOT = BASE_DIR / 'staticfiles'
 else:
-    # Production: Optimized Cloudinary storage with dynamic folder mode support
+    # Production: Cloudinary storage
     STORAGES = {
         "default": {
-            "BACKEND": "eesa_backend.storage.DynamicFolderMediaStorage",
+            "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
         },
         "staticfiles": {
-            "BACKEND": "eesa_backend.storage.DynamicFolderStaticStorage",
+            "BACKEND": "cloudinary_storage.storage.StaticHashedCloudinaryStorage",
         },
     }
     # Backward compatibility for cloudinary_storage package
-    DEFAULT_FILE_STORAGE = 'eesa_backend.storage.DynamicFolderMediaStorage'
-    STATICFILES_STORAGE = 'eesa_backend.storage.DynamicFolderStaticStorage'
+    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+    STATICFILES_STORAGE = 'cloudinary_storage.storage.StaticHashedCloudinaryStorage'
     
     STATIC_URL = '/static/'
     STATIC_ROOT = BASE_DIR / 'staticfiles'
@@ -170,13 +170,10 @@ if not DEBUG and all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_
         cloud_name=CLOUDINARY_CLOUD_NAME,
         api_key=CLOUDINARY_API_KEY,
         api_secret=CLOUDINARY_API_SECRET,
-        secure=True,
-        # Enable dynamic folder mode settings
-        asset_folder='',  # We'll set specific folders in storage classes
-        use_asset_folder_as_public_id_prefix=True
+        secure=True
     )
 
-# Optimized Cloudinary storage settings for dynamic folder mode
+# Cloudinary storage settings for production
 if not DEBUG and all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
     CLOUDINARY_STORAGE = {
         'CLOUD_NAME': CLOUDINARY_CLOUD_NAME,
@@ -184,13 +181,8 @@ if not DEBUG and all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_
         'API_SECRET': CLOUDINARY_API_SECRET,
         'SECURE': True,
         'STATICFILES_MANIFEST_ROOT': os.path.join(BASE_DIR, 'staticfiles'),
-        # Optimized settings for dynamic folder mode
-        'DYNAMIC_FOLDER_MODE': True,
-        'STATIC_ASSET_FOLDER': 'static',
-        'MEDIA_ASSET_FOLDER': 'media',
-        'USE_FILENAME': True,
-        'UNIQUE_FILENAME': False,
-        'OVERWRITE': True,
+        'STATIC_TAG': 'static',           # Static files go to 'static/' folder
+        'MEDIA_TAG': 'media',             # Media files go to 'media/' folder
     }
 
 # Password validation
