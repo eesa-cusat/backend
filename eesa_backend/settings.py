@@ -176,18 +176,6 @@ if not DEBUG and all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_
         secure=True
     )
 
-# Cloudinary storage settings for production
-if not DEBUG and all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
-    CLOUDINARY_STORAGE = {
-        'CLOUD_NAME': CLOUDINARY_CLOUD_NAME,
-        'API_KEY': CLOUDINARY_API_KEY,
-        'API_SECRET': CLOUDINARY_API_SECRET,
-        'SECURE': True,
-        'STATICFILES_MANIFEST_ROOT': os.path.join(BASE_DIR, 'staticfiles'),
-        'STATIC_TAG': 'static',           # Static files go to 'static/' folder
-        'MEDIA_TAG': 'media',             # Media files go to 'media/' folder
-    }
-
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -309,3 +297,7 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Port configuration for deployment platforms
+import os
+PORT = int(os.environ.get('PORT', 8000))
