@@ -61,6 +61,12 @@ test_*.py
 !README.md
 DEPLOYMENT_GUIDE.md
 PRODUCTION_CHECKLIST.md
+ACADEMIC_FILTERING_GUIDE.md
+
+# Demo/test HTML files (frontend will handle UI)
+*.html
+demo*.html
+*_demo.html
 
 # Database files
 db.sqlite3
