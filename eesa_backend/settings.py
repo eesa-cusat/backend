@@ -130,75 +130,67 @@ STATICFILES_FINDERS = [
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
 ]
 
-# Storage based on environment
-if DEBUG:
-    DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
-    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
-    MEDIA_URL = '/media/'
-    MEDIA_ROOT = BASE_DIR / 'media'
-    STATIC_URL = '/static/'
-    STATIC_ROOT = BASE_DIR / 'staticfiles'
-else:
-    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-    STATICFILES_STORAGE = 'cloudinary_storage.storage.StaticHashedCloudinaryStorage'
-    STATIC_URL = f'https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/static/'
-    STATIC_ROOT = BASE_DIR / 'staticfiles'
-    MEDIA_URL = f'https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/'
-
-# Cloudinary configuration for production
-if not DEBUG and all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
-    import cloudinary
-    cloudinary.config(
-        cloud_name=CLOUDINARY_CLOUD_NAME,
-        api_key=CLOUDINARY_API_KEY,
-        api_secret=CLOUDINARY_API_SECRET,
-        secure=True
-    )
-
-# File storage configuration
-STATICFILES_FINDERS = [
-    'django.contrib.staticfiles.finders.FileSystemFinder',
-    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
-]
-
 # Storage configuration based on environment
 if DEBUG:
     # Development: Local storage
-    DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
-    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
     MEDIA_URL = '/media/'
     MEDIA_ROOT = BASE_DIR / 'media'
     STATIC_URL = '/static/'
     STATIC_ROOT = BASE_DIR / 'staticfiles'
 else:
-    # Production: Cloudinary storage
-    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-    STATICFILES_STORAGE = 'cloudinary_storage.storage.StaticHashedCloudinaryStorage'
-    STATIC_URL = f'https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/static/'
+    # Production: Optimized Cloudinary storage with dynamic folder mode support
+    STORAGES = {
+        "default": {
+            "BACKEND": "eesa_backend.storage.DynamicFolderMediaStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "eesa_backend.storage.DynamicFolderStaticStorage",
+        },
+    }
+    # Backward compatibility for cloudinary_storage package
+    DEFAULT_FILE_STORAGE = 'eesa_backend.storage.DynamicFolderMediaStorage'
+    STATICFILES_STORAGE = 'eesa_backend.storage.DynamicFolderStaticStorage'
+    
+    STATIC_URL = '/static/'
     STATIC_ROOT = BASE_DIR / 'staticfiles'
-    MEDIA_URL = f'https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/'
+    MEDIA_URL = '/media/'
 
 # Cloudinary configuration for production
 if not DEBUG and all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
     import cloudinary
-    import cloudinary.uploader
-    import cloudinary.api
-
     cloudinary.config(
         cloud_name=CLOUDINARY_CLOUD_NAME,
         api_key=CLOUDINARY_API_KEY,
         api_secret=CLOUDINARY_API_SECRET,
-        secure=True
+        secure=True,
+        # Enable dynamic folder mode settings
+        asset_folder='',  # We'll set specific folders in storage classes
+        use_asset_folder_as_public_id_prefix=True
     )
 
+# Optimized Cloudinary storage settings for dynamic folder mode
+if not DEBUG and all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
     CLOUDINARY_STORAGE = {
         'CLOUD_NAME': CLOUDINARY_CLOUD_NAME,
         'API_KEY': CLOUDINARY_API_KEY,
         'API_SECRET': CLOUDINARY_API_SECRET,
-        'RESOURCE_TYPE': 'raw',
         'SECURE': True,
-        'STATICFILES_MANIFEST_ROOT': '',
-        'STATICFILES_USE_MANIFEST': False,
+        'STATICFILES_MANIFEST_ROOT': os.path.join(BASE_DIR, 'staticfiles'),
+        # Optimized settings for dynamic folder mode
+        'DYNAMIC_FOLDER_MODE': True,
+        'STATIC_ASSET_FOLDER': 'static',
+        'MEDIA_ASSET_FOLDER': 'media',
+        'USE_FILENAME': True,
+        'UNIQUE_FILENAME': False,
+        'OVERWRITE': True,
     }
 
 # Password validation
