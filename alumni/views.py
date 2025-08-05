@@ -237,8 +237,8 @@ class AlumniViewSet(viewsets.ModelViewSet):
         queryset = Alumni.objects.filter(is_active=True)
         total_alumni = queryset.count()
         
-        # Count entrepreneurs (self-employed)
-        entrepreneurs = queryset.filter(employment_status='self_employed')
+        # Count entrepreneurs (both self_employed and entrepreneur status)
+        entrepreneurs = queryset.filter(employment_status__in=['self_employed', 'entrepreneur'])
         entrepreneur_count = entrepreneurs.count()
         
         # Calculate entrepreneurship rate
@@ -280,7 +280,7 @@ class AlumniViewSet(viewsets.ModelViewSet):
         """Get list of entrepreneur alumni"""
         entrepreneurs = Alumni.objects.filter(
             is_active=True,
-            employment_status='self_employed'
+            employment_status__in=['self_employed', 'entrepreneur']
         ).order_by('-year_of_passout', 'full_name')
         
         serializer = AlumniSerializer(entrepreneurs, many=True)
@@ -294,7 +294,7 @@ class AlumniViewSet(viewsets.ModelViewSet):
         """Get startup success stories (same as entrepreneurs for now)"""
         entrepreneurs = Alumni.objects.filter(
             is_active=True,
-            employment_status='self_employed'
+            employment_status__in=['self_employed', 'entrepreneur']
         ).order_by('-year_of_passout', 'full_name')
         
         # Format as success stories
