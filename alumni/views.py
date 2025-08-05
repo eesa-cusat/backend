@@ -232,6 +232,92 @@ class AlumniViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
+    def entrepreneurship_stats(self, request):
+        """Get alumni entrepreneurship statistics"""
+        queryset = Alumni.objects.filter(is_active=True)
+        total_alumni = queryset.count()
+        
+        # Count entrepreneurs (self-employed)
+        entrepreneurs = queryset.filter(employment_status='self_employed')
+        entrepreneur_count = entrepreneurs.count()
+        
+        # Calculate entrepreneurship rate
+        entrepreneurship_rate = (entrepreneur_count / total_alumni * 100) if total_alumni > 0 else 0
+        
+        # Get recent entrepreneurs (last 5 years)
+        from django.utils import timezone
+        current_year = timezone.now().year
+        recent_entrepreneurs = entrepreneurs.filter(year_of_passout__gte=current_year - 5)
+        
+        # Top startup sectors (based on job_title or current_company)
+        startup_sectors = list(
+            entrepreneurs.exclude(job_title__isnull=True)
+            .exclude(job_title='')
+            .values('job_title')
+            .annotate(count=Count('job_title'))
+            .order_by('-count')[:5]
+        )
+        
+        # Entrepreneurship by graduation year
+        entrepreneurship_by_year = list(
+            entrepreneurs.values('year_of_passout')
+            .annotate(count=Count('year_of_passout'))
+            .order_by('-year_of_passout')
+        )
+        
+        return Response({
+            'total_alumni': total_alumni,
+            'total_entrepreneurs': entrepreneur_count,
+            'entrepreneurship_rate': round(entrepreneurship_rate, 2),
+            'recent_entrepreneurs_count': recent_entrepreneurs.count(),
+            'startup_sectors': startup_sectors,
+            'entrepreneurship_by_year': entrepreneurship_by_year,
+            'success_stories_count': entrepreneur_count  # All entrepreneurs are considered success stories
+        })
+    
+    @action(detail=False, methods=['get'])
+    def entrepreneurs(self, request):
+        """Get list of entrepreneur alumni"""
+        entrepreneurs = Alumni.objects.filter(
+            is_active=True,
+            employment_status='self_employed'
+        ).order_by('-year_of_passout', 'full_name')
+        
+        serializer = AlumniSerializer(entrepreneurs, many=True)
+        return Response({
+            'count': entrepreneurs.count(),
+            'entrepreneurs': serializer.data
+        })
+    
+    @action(detail=False, methods=['get'])
+    def startup_stories(self, request):
+        """Get startup success stories (same as entrepreneurs for now)"""
+        entrepreneurs = Alumni.objects.filter(
+            is_active=True,
+            employment_status='self_employed'
+        ).order_by('-year_of_passout', 'full_name')
+        
+        # Format as success stories
+        stories = []
+        for entrepreneur in entrepreneurs:
+            story = {
+                'id': entrepreneur.id,
+                'name': entrepreneur.full_name,
+                'graduation_year': entrepreneur.year_of_passout,
+                'company': entrepreneur.current_company or 'Startup Founder',
+                'title': entrepreneur.job_title or 'Entrepreneur',
+                'location': entrepreneur.current_location,
+                'story': f"Alumni of {entrepreneur.year_of_passout}, currently working as {entrepreneur.job_title} at {entrepreneur.current_company}",
+                'linkedin': entrepreneur.linkedin_profile
+            }
+            stories.append(story)
+        
+        return Response({
+            'count': len(stories),
+            'success_stories': stories
+        })
+    
+    @action(detail=False, methods=['get'])
     def csv_template(self, request):
         """Download CSV template for bulk import"""
         response = HttpResponse(content_type='text/csv')
