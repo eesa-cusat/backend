@@ -23,11 +23,11 @@ class TeamMemberSerializer(serializers.ModelSerializer):
 
 
 class ProjectImageSerializer(serializers.ModelSerializer):
-    """Project image serializer"""
+    """Project image serializer - first image acts as cover image"""
     
     class Meta:
         model = ProjectImage
-        fields = ['id', 'image', 'caption', 'is_featured', 'created_at']
+        fields = ['id', 'project', 'image', 'caption', 'is_featured', 'created_at']
         read_only_fields = ['id', 'created_at']
 
 
@@ -36,7 +36,7 @@ class ProjectVideoSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = ProjectVideo
-        fields = ['id', 'video_url', 'title', 'description', 'is_featured', 'created_at']
+        fields = ['id', 'project', 'video_url', 'title', 'description', 'is_featured', 'created_at']
         read_only_fields = ['id', 'created_at']
 
 
@@ -45,19 +45,26 @@ class ProjectSerializer(serializers.ModelSerializer):
     
     created_by = UserSerializer(read_only=True)
     team_members = TeamMemberSerializer(many=True, read_only=True)
-    images = ProjectImageSerializer(many=True, read_only=True)
+    gallery_images = ProjectImageSerializer(many=True, read_only=True, source='images')
     videos = ProjectVideoSerializer(many=True, read_only=True)
-    featured_image = ProjectImageSerializer(read_only=True)
-    featured_video = ProjectVideoSerializer(read_only=True)
+    thumbnail_image = serializers.ImageField(read_only=True, source='project_images')
+    featured_video = serializers.SerializerMethodField()
     
     class Meta:
         model = Project
         fields = [
             'id', 'title', 'description', 'abstract', 'category', 'student_batch',
             'github_url', 'demo_url', 'project_report', 'created_by', 'team_members', 
-            'images', 'videos', 'featured_image', 'featured_video', 'created_at', 'updated_at'
+            'thumbnail_image', 'gallery_images', 'videos', 'featured_video', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
+    
+    def get_featured_video(self, obj):
+        """Get the featured video for this project"""
+        featured_video = obj.videos.filter(is_featured=True).first()
+        if featured_video:
+            return ProjectVideoSerializer(featured_video).data
+        return None
 
 
 class ProjectCreateSerializer(serializers.ModelSerializer):
@@ -159,12 +166,13 @@ class ProjectListSerializer(serializers.ModelSerializer):
     
     created_by_name = serializers.CharField(source='created_by.username', read_only=True)
     team_count = serializers.SerializerMethodField()
+    thumbnail_image = serializers.ImageField(read_only=True, source='project_images')
     
     class Meta:
         model = Project
         fields = [
             'id', 'title', 'description', 'category', 'github_url', 
-            'demo_url', 'created_by_name', 'team_count', 'created_at'
+            'demo_url', 'thumbnail_image', 'created_by_name', 'team_count', 'created_at'
         ]
     
     def get_team_count(self, obj):

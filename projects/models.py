@@ -63,7 +63,12 @@ class Project(models.Model):
         null=True, 
         help_text="Upload project report (PDF only). Maximum file size: 15MB."
     )
-    project_images = models.ImageField(upload_to=project_image_upload_path, blank=True, null=True, help_text="Project screenshots or images")
+    project_images = models.ImageField(
+        upload_to=project_image_upload_path, 
+        blank=True, 
+        null=True, 
+        help_text="Main cover image for the project - this will be used as the thumbnail in project lists and cards"
+    )
     
     # Links
     github_url = models.URLField(blank=True, null=True)
@@ -102,9 +107,26 @@ class Project(models.Model):
     
     @property
     def featured_image(self):
-        """Get the featured image for this project"""
+        """Get the cover image for this project - prioritizes project_images field as thumbnail"""
+        # First priority: Direct project_images field (main thumbnail)
+        if self.project_images:
+            # Create a mock object that behaves like ProjectImage for API consistency
+            class MockProjectImage:
+                def __init__(self, image_field, project_title):
+                    self.image = image_field
+                    self.caption = f"{project_title} - Cover Image"
+                    self.is_featured = True
+                    self.id = 0
+                    self.created_at = None
+            return MockProjectImage(self.project_images, self.title)
+        
+        # Second priority: Explicitly featured gallery image
         featured = self.images.filter(is_featured=True).first()
-        return featured if featured else self.images.first()
+        if featured:
+            return featured
+            
+        # Third priority: First gallery image
+        return self.images.first()
     
     @property
     def featured_video(self):

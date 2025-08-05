@@ -1,11 +1,12 @@
-from rest_framework import status, permissions
+from rest_framework import status, permissions, viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from django.db.models import Q, Count
 from accounts.permissions import IsOwnerOrReadOnly
-from .models import Project
+from .models import Project, ProjectImage, ProjectVideo
 from .serializers import (
-    ProjectSerializer, ProjectCreateSerializer, ProjectUpdateSerializer, ProjectListSerializer
+    ProjectSerializer, ProjectCreateSerializer, ProjectUpdateSerializer, ProjectListSerializer,
+    ProjectImageSerializer, ProjectVideoSerializer
 )
 
 
@@ -172,3 +173,47 @@ def featured_projects(request):
     return Response({
         'featured_projects': ProjectListSerializer(projects, many=True).data
     })
+
+
+class ProjectImageViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing project images"""
+    
+    queryset = ProjectImage.objects.all()
+    serializer_class = ProjectImageSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    
+    def get_queryset(self):
+        queryset = ProjectImage.objects.all()
+        project_id = self.request.query_params.get('project', None)
+        if project_id:
+            queryset = queryset.filter(project_id=project_id)
+        return queryset.order_by('-is_featured', 'created_at')
+    
+    def perform_create(self, serializer):
+        # If this is marked as featured, unset other featured images for the same project
+        if serializer.validated_data.get('is_featured', False):
+            project = serializer.validated_data['project']
+            ProjectImage.objects.filter(project=project, is_featured=True).update(is_featured=False)
+        serializer.save()
+
+
+class ProjectVideoViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing project videos"""
+    
+    queryset = ProjectVideo.objects.all()
+    serializer_class = ProjectVideoSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    
+    def get_queryset(self):
+        queryset = ProjectVideo.objects.all()
+        project_id = self.request.query_params.get('project', None)
+        if project_id:
+            queryset = queryset.filter(project_id=project_id)
+        return queryset.order_by('-is_featured', 'created_at')
+    
+    def perform_create(self, serializer):
+        # If this is marked as featured, unset other featured videos for the same project
+        if serializer.validated_data.get('is_featured', False):
+            project = serializer.validated_data['project']
+            ProjectVideo.objects.filter(project=project, is_featured=True).update(is_featured=False)
+        serializer.save()
