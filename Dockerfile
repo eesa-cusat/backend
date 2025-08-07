@@ -61,13 +61,27 @@ USER django
 
 # Create startup script with proper environment handling
 RUN echo '#!/bin/bash\n\
+set -e\n\
+echo "🔄 Setting up fresh database..."\n\
+\n\
+# Generate migrations for core apps first (those without dependencies)\n\
+echo "📝 Creating migrations for accounts app..."\n\
+python manage.py makemigrations accounts || echo "No changes detected for accounts"\n\
+\n\
+# Generate migrations for all apps\n\
+echo "📝 Creating migrations for all apps..."\n\
+python manage.py makemigrations || echo "No changes detected"\n\
+\n\
 # Run migrations\n\
+echo "🗄️ Running migrations..."\n\
 python manage.py migrate --noinput\n\
 \n\
 # Collect static files (Cloudinary handles them automatically)\n\
+echo "📦 Collecting static files..."\n\
 python manage.py collectstatic --noinput\n\
 \n\
 # Start Gunicorn\n\
+echo "🚀 Starting server..."\n\
 exec gunicorn eesa_backend.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 2 --timeout 120\n\
 ' > /app/start.sh && chmod +x /app/start.sh
 

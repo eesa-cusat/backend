@@ -19,7 +19,16 @@ services:
     volumes:
       - .:/app
       - media_files:/app/media
-    command: python manage.py runserver 0.0.0.0:8000
+    command: >
+      sh -c "echo '🔄 Setting up development environment...' &&
+             echo '📝 Creating migrations for accounts app...' &&
+             python manage.py makemigrations accounts &&
+             echo '📝 Creating migrations for all apps...' &&
+             python manage.py makemigrations &&
+             echo '🗄️ Running migrations...' &&
+             python manage.py migrate &&
+             echo '🚀 Starting development server...' &&
+             python manage.py runserver 0.0.0.0:8000"
 
   db:
     image: postgres:15

@@ -22,8 +22,16 @@ services:
     volumes:
       - static_files:/app/staticfiles
     command: >
-      sh -c "python manage.py migrate &&
+      sh -c "echo '🔄 Setting up production database...' &&
+             echo '📝 Creating migrations for accounts app...' &&
+             python manage.py makemigrations accounts &&
+             echo '📝 Creating migrations for all apps...' &&
+             python manage.py makemigrations &&
+             echo '🗄️ Running migrations...' &&
+             python manage.py migrate --noinput &&
+             echo '📦 Collecting static files...' &&
              python manage.py collectstatic --noinput &&
+             echo '🚀 Starting production server...' &&
              gunicorn eesa_backend.wsgi:application --bind 0.0.0.0:8000"
 
   db:
