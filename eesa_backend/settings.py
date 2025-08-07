@@ -226,7 +226,7 @@ REST_FRAMEWORK = {
 if DEBUG:
     # Development CORS settings
     dev_cors = os.environ.get('DEV_CORS_ALLOWED_ORIGINS', 
-                             'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173')
+                             'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:5173,http://127.0.0.1:5173')
     CORS_ALLOWED_ORIGINS = [origin.strip() for origin in dev_cors.split(',') if origin.strip()]
 else:
     # Production CORS settings
@@ -257,10 +257,20 @@ CORS_ALLOW_HEADERS = [
 ]
 
 # CSRF configuration
+CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript to read CSRF token
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SECURE = False if DEBUG else True  # Only secure in production
+CSRF_USE_SESSIONS = False
+
+# Session configuration
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SECURE = False if DEBUG else True  # Only secure in production
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_AGE = 86400  # 24 hours
 if DEBUG:
     # Development CSRF settings - allow frontend origins
     dev_csrf = os.environ.get('DEV_CSRF_TRUSTED_ORIGINS', 
-                             'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173')
+                             'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:5173,http://127.0.0.1:5173')
     CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in dev_csrf.split(',') if origin.strip()]
 else:
     # Production CSRF settings

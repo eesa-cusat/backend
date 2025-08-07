@@ -9,6 +9,7 @@ from .serializers import (
     EventSerializer, EventListSerializer, EventRegistrationSerializer,
     EventRegistrationCreateSerializer, EventSpeakerSerializer, EventScheduleSerializer, EventFeedbackSerializer
 )
+from accounts.permissions import IsEventsTeamOrReadOnly
 
 
 class EventViewSet(viewsets.ModelViewSet):
@@ -16,7 +17,7 @@ class EventViewSet(viewsets.ModelViewSet):
     
     queryset = Event.objects.all()
     serializer_class = EventSerializer
-    permission_classes = [permissions.AllowAny]  # Temporarily allow public access for testing
+    permission_classes = [IsEventsTeamOrReadOnly]
     
     def get_serializer_class(self):
         """Use different serializers for different actions"""
@@ -211,11 +212,11 @@ class EventSpeakerViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     
     def get_permissions(self):
-        """Anyone can view speakers, only staff can modify"""
+        """Anyone can view speakers, only events team can modify"""
         if self.action in ['list', 'retrieve']:
             permission_classes = [permissions.AllowAny]
         else:
-            permission_classes = [permissions.IsAuthenticated]
+            permission_classes = [IsEventsTeamOrReadOnly]
         
         return [permission() for permission in permission_classes]
 
@@ -228,11 +229,11 @@ class EventScheduleViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     
     def get_permissions(self):
-        """Anyone can view schedule, only staff can modify"""
+        """Anyone can view schedule, only events team can modify"""
         if self.action in ['list', 'retrieve']:
             permission_classes = [permissions.AllowAny]
         else:
-            permission_classes = [permissions.IsAuthenticated]
+            permission_classes = [IsEventsTeamOrReadOnly]
         
         return [permission() for permission in permission_classes]
 

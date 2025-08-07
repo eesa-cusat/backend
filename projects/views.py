@@ -2,7 +2,7 @@ from rest_framework import status, permissions, viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from django.db.models import Q, Count
-from accounts.permissions import IsOwnerOrReadOnly
+from accounts.permissions import IsOwnerOrReadOnly, IsAcademicsTeamOrReadOnly
 from .models import Project, ProjectImage, ProjectVideo
 from .serializers import (
     ProjectSerializer, ProjectCreateSerializer, ProjectUpdateSerializer, ProjectListSerializer,
@@ -91,9 +91,9 @@ def project_detail(request, pk):
 
 
 @api_view(['POST'])
-@permission_classes([permissions.IsAuthenticated])
+@permission_classes([IsAcademicsTeamOrReadOnly])
 def create_project(request):
-    """Create a new project"""
+    """Create a new project (academics team only)"""
     serializer = ProjectCreateSerializer(data=request.data, context={'request': request})
     if serializer.is_valid():
         project = serializer.save()
@@ -105,9 +105,9 @@ def create_project(request):
 
 
 @api_view(['PUT', 'PATCH'])
-@permission_classes([permissions.IsAuthenticated])
+@permission_classes([IsAcademicsTeamOrReadOnly])
 def update_project(request, pk):
-    """Update a project (only by creator)"""
+    """Update a project (academics team only)"""
     try:
         project = Project.objects.get(pk=pk)
         
@@ -131,9 +131,9 @@ def update_project(request, pk):
 
 
 @api_view(['DELETE'])
-@permission_classes([permissions.IsAuthenticated])
+@permission_classes([IsAcademicsTeamOrReadOnly])
 def delete_project(request, pk):
-    """Delete a project (only by creator or admin)"""
+    """Delete a project (academics team only)"""
     try:
         project = Project.objects.get(pk=pk)
         
@@ -180,7 +180,7 @@ class ProjectImageViewSet(viewsets.ModelViewSet):
     
     queryset = ProjectImage.objects.all()
     serializer_class = ProjectImageSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAcademicsTeamOrReadOnly]
     
     def get_queryset(self):
         queryset = ProjectImage.objects.all()
@@ -202,7 +202,7 @@ class ProjectVideoViewSet(viewsets.ModelViewSet):
     
     queryset = ProjectVideo.objects.all()
     serializer_class = ProjectVideoSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAcademicsTeamOrReadOnly]
     
     def get_queryset(self):
         queryset = ProjectVideo.objects.all()

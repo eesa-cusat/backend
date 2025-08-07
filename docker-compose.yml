@@ -7,7 +7,7 @@ services:
       - "8000:8000"
     environment:
       - DEBUG=True
-      - SECRET_KEY=dev-secret-key
+      - SECRET_KEY=dev-secret-key-change-in-production
       - ALLOWED_HOSTS=localhost,127.0.0.1
       - DB_NAME=postgres
       - DB_USER=postgres
@@ -18,10 +18,11 @@ services:
       - db
     volumes:
       - .:/app
+      - media_files:/app/media
     command: python manage.py runserver 0.0.0.0:8000
 
   db:
-    image: postgres:13
+    image: postgres:15
     environment:
       - POSTGRES_DB=postgres
       - POSTGRES_USER=postgres
@@ -32,4 +33,5 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
 volumes:
-  postgres_data: 
+  postgres_data:
+  media_files:

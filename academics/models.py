@@ -68,11 +68,19 @@ def academic_resource_upload_path(instance, filename):
     """Generate upload path for academic resources with proper hierarchy"""
     # Clean the filename to remove any problematic characters and ensure it's URL-safe
     import re
-    clean_filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
+    import os
     
-    # Remove .pdf extension if it exists to avoid double extensions
-    if clean_filename.lower().endswith('.pdf'):
-        clean_filename = clean_filename[:-4]  # Remove .pdf
+    # Split filename and extension
+    name, ext = os.path.splitext(filename)
+    
+    # Clean the filename part (without extension) to remove problematic characters
+    clean_name = re.sub(r'[^a-zA-Z0-9._-]', '_', name)
+    
+    # Ensure we have a .pdf extension
+    if not ext.lower() == '.pdf':
+        ext = '.pdf'
+    
+    clean_filename = clean_name + ext
     
     # Main category: academics
     # Subcategory: category (notes, textbook, pyq, etc.)
@@ -86,7 +94,7 @@ def academic_resource_upload_path(instance, filename):
     if instance.category == 'notes' and instance.module_number > 0:
         base_path += f"/module_{instance.module_number}"
     
-    # Return the path without .pdf extension (storage will add it)
+    # Return the path with proper extension
     return f"{base_path}/{clean_filename}"
 
 class AcademicResource(models.Model):

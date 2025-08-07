@@ -34,6 +34,18 @@ class User(AbstractUser):
     def is_staff_member(self):
         """Check if user is staff based on groups"""
         return self.is_superuser or self.groups.exists()
+    
+    def save(self, *args, **kwargs):
+        """Override save to automatically set is_staff based on group membership"""
+        super().save(*args, **kwargs)
+        # Update is_staff based on group membership
+        self.is_staff = self.is_superuser or self.groups.exists()
+        if self._state.adding:
+            # Skip saving again if this is the first save
+            pass
+        else:
+            # Only update is_staff field to avoid infinite recursion
+            type(self).objects.filter(pk=self.pk).update(is_staff=self.is_staff)
 
 
 class TeamMember(models.Model):

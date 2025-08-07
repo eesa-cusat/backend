@@ -15,7 +15,7 @@ from .serializers import (
     AlumniSerializer, AlumniCreateSerializer,
     BulkAlumniImportSerializer, AlumniStatsSerializer, AlumniSearchSerializer
 )
-from accounts.permissions import IsOwnerOrReadOnly
+from accounts.permissions import IsOwnerOrReadOnly, IsPeopleTeamOrReadOnly
 
 User = get_user_model()
 
@@ -25,7 +25,7 @@ class AlumniViewSet(viewsets.ModelViewSet):
     
     queryset = Alumni.objects.all()
     serializer_class = AlumniSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [IsPeopleTeamOrReadOnly]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['year_of_passout', 'employment_status', 'is_verified']
     search_fields = ['full_name', 'email', 'current_company', 'job_title']
