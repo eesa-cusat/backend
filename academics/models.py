@@ -188,36 +188,30 @@ class AcademicResource(models.Model):
             # In development, use local file URL
             if settings.DEBUG:
                 return self.file.url if hasattr(self.file, 'url') else str(self.file)
-            
-            # In production, handle Cloudinary URLs
-            file_str = str(self.file)
-            
-            # If it's already a full Cloudinary URL, use it directly
-            if file_str.startswith('http'):
-                # Fix the missing slash issue
-                if 'https:/res.cloudinary.com' in file_str:
-                    fixed_url = file_str.replace('https:/res.cloudinary.com', 'https://res.cloudinary.com')
-                    return fixed_url
-                return file_str
-            
-            # For new uploads, use the file.url which should be the correct Cloudinary URL
-            if hasattr(self.file, 'url') and self.file.url:
-                url = self.file.url
-                # If the file field is already a full URL, don't use file.url as it creates malformed URLs
-                if file_str.startswith('http'):
-                    # Just use the file field string directly
-                    return file_str
-                
-                # Ensure the URL is properly formatted for PDF preview
-                if url and 'res.cloudinary.com' in url:
-                    # Make sure we're using the raw resource URL
-                    if '/image/upload/' in url:
-                        url = url.replace('/image/upload/', '/raw/upload/')
-                    return url
+
+            # In production, normalize Cloudinary URLs for PDFs
+            # Prefer the storage-provided URL when available
+            url = self.file.url if hasattr(self.file, 'url') and self.file.url else str(self.file)
+
+            # Fix occasional missing slash bug
+            if 'https:/res.cloudinary.com' in url:
+                url = url.replace('https:/res.cloudinary.com', 'https://res.cloudinary.com')
+
+            # If not a Cloudinary URL, return as-is
+            if 'res.cloudinary.com' not in url:
                 return url
-            
-            # Fallback to the file field string
-            return file_str
+
+            # Force delivery via image/upload for PDFs, not raw/upload
+            url = url.replace('/raw/upload/', '/image/upload/')
+
+            # Ensure .pdf extension is present at the end of the public_id
+            # Preserve query string if any
+            base, sep, query = url.partition('?')
+            if not base.lower().endswith('.pdf'):
+                base += '.pdf'
+            url = base + (sep + query if sep else '')
+
+            return url
         else:
             return None
 

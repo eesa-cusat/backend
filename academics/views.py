@@ -6,6 +6,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
+from django.shortcuts import redirect
 import os
 
 from .models import (
@@ -667,13 +668,16 @@ def download_academic_resource(request, pk):
             resource.download_count = F('download_count') + 1
             resource.save()
             
-            # Get the file path
-            file_path = resource.file.path
-            
-            if not os.path.exists(file_path):
+            # If Cloudinary URL, redirect to it for optimized delivery
+            file_url = resource.file_url or (resource.file.url if hasattr(resource.file, 'url') else str(resource.file))
+            if file_url and 'res.cloudinary.com' in file_url:
+                return redirect(file_url)
+
+            # Fallback: serve local file in development
+            file_path = getattr(resource.file, 'path', None)
+            if not file_path or not os.path.exists(file_path):
                 return Response({'error': 'File not found on disk'}, status=status.HTTP_404_NOT_FOUND)
-            
-            # Open and serve the file
+
             with open(file_path, 'rb') as f:
                 response = HttpResponse(f.read(), content_type='application/octet-stream')
                 response['Content-Disposition'] = f'attachment; filename="{os.path.basename(file_path)}"'
