@@ -23,8 +23,7 @@ CLOUDINARY_API_SECRET = os.environ.get('CLOUDINARY_API_SECRET')
 SECRET_KEY = os.environ.get('SECRET_KEY', get_random_secret_key())
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
-# Allowed hosts configuration
-# Default to localhost in DEBUG, and to only the API and WWW domains in production
+# Allowed hosts configuration - Updated for api subdomain
 ALLOWED_HOSTS_STR = os.environ.get(
     'ALLOWED_HOSTS',
     'localhost,127.0.0.1' if DEBUG else 'api.eesacusat.in,www.eesacusat.in'
@@ -33,9 +32,6 @@ if ALLOWED_HOSTS_STR == '*':
     ALLOWED_HOSTS = ['*']
 else:
     ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_STR.split(',') if host.strip()]
-
-# In production, keep ALLOWED_HOSTS tight to avoid unintended exposure.
-# Use the environment variable to expand if needed.
 
 # Application definition
 INSTALLED_APPS = [
@@ -213,7 +209,7 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
 }
 
-# CORS configuration
+# CORS configuration - Updated for cross-origin requests
 if DEBUG:
     # Development CORS settings
     dev_cors = os.environ.get(
@@ -222,8 +218,8 @@ if DEBUG:
     )
     CORS_ALLOWED_ORIGINS = [origin.strip() for origin in dev_cors.split(',') if origin.strip()]
 else:
-    # Behind a proxy in production, CORS is not needed for same-origin requests
-    CORS_ALLOWED_ORIGINS = []
+    # Production CORS settings - Now allow frontend domain (was empty before)
+    CORS_ALLOWED_ORIGINS = ['https://www.eesacusat.in']
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_METHODS = [
@@ -247,33 +243,35 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-# CSRF configuration
+# CSRF configuration - Updated for cross-origin requests
 CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript to read CSRF token
-CSRF_COOKIE_SAMESITE = 'Lax'
-CSRF_COOKIE_SECURE = False if DEBUG else True  # Only secure in production
+CSRF_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'  # Required for cross-origin
+CSRF_COOKIE_SECURE = True if not DEBUG else False  # Required with SameSite=None in production
 CSRF_USE_SESSIONS = False
 
 # Session configuration
-SESSION_COOKIE_SAMESITE = 'Lax'
-SESSION_COOKIE_SECURE = False if DEBUG else True  # Only secure in production
+SESSION_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'  # Required for cross-origin
+SESSION_COOKIE_SECURE = True if not DEBUG else False  # Required with SameSite=None in production
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_AGE = 86400  # 24 hours
 
-# Cookie domains for production (use parent domain; never the subdomain)
+# Cookie domains for production - Updated for api subdomain
 if not DEBUG:
-    SESSION_COOKIE_DOMAIN = '.eesacusat.in'
-    CSRF_COOKIE_DOMAIN = '.eesacusat.in'
+    SESSION_COOKIE_DOMAIN = '.eesacusat.in'  # Parent domain to work across subdomains
+    CSRF_COOKIE_DOMAIN = '.eesacusat.in'     # Parent domain to work across subdomains
+
+# CSRF trusted origins - Updated for new setup
 if DEBUG:
-    # Development CSRF settings - allow frontend origins
+    # Development CSRF settings
     dev_csrf = os.environ.get('DEV_CSRF_TRUSTED_ORIGINS', 
                              'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:5173,http://127.0.0.1:5173')
     CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in dev_csrf.split(',') if origin.strip()]
 else:
-    # Production CSRF settings: only trust the main site by default. Add api subdomain via env if needed.
-    csrf_origins = os.environ.get('CSRF_TRUSTED_ORIGINS', 'https://www.eesacusat.in')
+    # Production CSRF settings - Include both API and frontend domains
+    csrf_origins = os.environ.get('CSRF_TRUSTED_ORIGINS', 'https://www.eesacusat.in,https://api.eesacusat.in')
     CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in csrf_origins.split(',') if origin.strip()]
 
-# Admin site customization
+# Admin site customization - Updated for new URL
 ADMIN_SITE_HEADER = "EESA Backend Administration"
 ADMIN_SITE_TITLE = "EESA Admin Portal"
 ADMIN_INDEX_TITLE = "Welcome to EESA Backend Administration"
@@ -299,8 +297,6 @@ if not DEBUG:
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_SSL_REDIRECT = True
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
     # Critical to avoid HTTPS redirect loops behind a proxy
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
