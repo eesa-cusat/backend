@@ -225,14 +225,14 @@ REST_FRAMEWORK = {
 # CORS configuration
 if DEBUG:
     # Development CORS settings
-    dev_cors = os.environ.get('DEV_CORS_ALLOWED_ORIGINS', 
-                             'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:5173,http://127.0.0.1:5173')
+    dev_cors = os.environ.get(
+        'DEV_CORS_ALLOWED_ORIGINS',
+        'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:5173,http://127.0.0.1:5173'
+    )
     CORS_ALLOWED_ORIGINS = [origin.strip() for origin in dev_cors.split(',') if origin.strip()]
 else:
-    # Production CORS settings
-    cors_origins = os.environ.get('CORS_ALLOWED_ORIGINS', 
-                                 'https://eesacusat.in,https://www.eesacusat.in')
-    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
+    # Behind a proxy in production, CORS is not needed for same-origin requests
+    CORS_ALLOWED_ORIGINS = []
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_METHODS = [
@@ -267,15 +267,19 @@ SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_SECURE = False if DEBUG else True  # Only secure in production
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_AGE = 86400  # 24 hours
+
+# Cookie domains for production (use parent domain; never the subdomain)
+if not DEBUG:
+    SESSION_COOKIE_DOMAIN = '.eesacusat.in'
+    CSRF_COOKIE_DOMAIN = '.eesacusat.in'
 if DEBUG:
     # Development CSRF settings - allow frontend origins
     dev_csrf = os.environ.get('DEV_CSRF_TRUSTED_ORIGINS', 
                              'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:5173,http://127.0.0.1:5173')
     CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in dev_csrf.split(',') if origin.strip()]
 else:
-    # Production CSRF settings
-    csrf_origins = os.environ.get('CSRF_TRUSTED_ORIGINS', 
-                                 'https://eesacusat.in,https://www.eesacusat.in')
+    # Production CSRF settings: only trust the main site by default. Add api subdomain via env if needed.
+    csrf_origins = os.environ.get('CSRF_TRUSTED_ORIGINS', 'https://www.eesacusat.in')
     CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in csrf_origins.split(',') if origin.strip()]
 
 # Admin site customization
