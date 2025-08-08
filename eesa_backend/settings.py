@@ -23,10 +23,10 @@ CLOUDINARY_API_SECRET = os.environ.get('CLOUDINARY_API_SECRET')
 SECRET_KEY = os.environ.get('SECRET_KEY', get_random_secret_key())
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
-# Allowed hosts configuration - Updated for api subdomain
+# Allowed hosts configuration - CORS-centric setup (API-only host in prod)
 ALLOWED_HOSTS_STR = os.environ.get(
     'ALLOWED_HOSTS',
-    'localhost,127.0.0.1' if DEBUG else 'api.eesacusat.in,www.eesacusat.in'
+    'localhost,127.0.0.1' if DEBUG else 'api.eesacusat.in'
 )
 if ALLOWED_HOSTS_STR == '*':
     ALLOWED_HOSTS = ['*']
@@ -255,10 +255,10 @@ SESSION_COOKIE_SECURE = True if not DEBUG else False  # Required with SameSite=N
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_AGE = 86400  # 24 hours
 
-# Cookie domains for production - Updated for api subdomain
-if not DEBUG:
-    SESSION_COOKIE_DOMAIN = '.eesacusat.in'  # Parent domain to work across subdomains
-    CSRF_COOKIE_DOMAIN = '.eesacusat.in'     # Parent domain to work across subdomains
+# Cookie domains: keep host-only by default. Uncomment env-based control if cross-subdomain cookies are needed.
+# Example:
+# SESSION_COOKIE_DOMAIN = os.environ.get('SESSION_COOKIE_DOMAIN')
+# CSRF_COOKIE_DOMAIN = os.environ.get('CSRF_COOKIE_DOMAIN')
 
 # CSRF trusted origins - Updated for new setup
 if DEBUG:
@@ -267,8 +267,8 @@ if DEBUG:
                              'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:5173,http://127.0.0.1:5173')
     CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in dev_csrf.split(',') if origin.strip()]
 else:
-    # Production CSRF settings - Include both API and frontend domains
-    csrf_origins = os.environ.get('CSRF_TRUSTED_ORIGINS', 'https://www.eesacusat.in,https://api.eesacusat.in')
+    # Production CSRF settings - trust only frontend origin by default
+    csrf_origins = os.environ.get('CSRF_TRUSTED_ORIGINS', 'https://www.eesacusat.in')
     CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in csrf_origins.split(',') if origin.strip()]
 
 # Admin site customization - Updated for new URL
@@ -288,7 +288,7 @@ CACHES = {
 CACHE_TTL = 60 * 60 * 24 * 365  # 1 year
 CACHE_KEY_PREFIX = 'eesa_'
 
-# Production security settings (behind proxy/CDN)
+# Production security settings
 if not DEBUG:
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
@@ -297,8 +297,6 @@ if not DEBUG:
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_SSL_REDIRECT = True
-    # Critical to avoid HTTPS redirect loops behind a proxy
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Port configuration for deployment platforms
 import os
