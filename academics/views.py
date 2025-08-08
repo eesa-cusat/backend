@@ -10,7 +10,7 @@ import os
 
 from .models import (
     Scheme, Subject, AcademicResource,
-    ResourceLike, ACADEMIC_CATEGORIES
+    ResourceLike, ACADEMIC_CATEGORIES, DEPARTMENT_CHOICES
 )
 from .serializers import AcademicResourceSerializer, AcademicResourceAdminSerializer
 from accounts.permissions import IsAcademicsTeamOrReadOnly
@@ -135,11 +135,18 @@ def subjects_by_scheme_semester(request):
     if request.method == 'GET':
         scheme_id = request.GET.get('scheme')
         semester = request.GET.get('semester')
+        department = request.GET.get('department')
         
         if not scheme_id or not semester:
             return Response({'error': 'Both scheme and semester are required'}, status=status.HTTP_400_BAD_REQUEST)
         
-        subjects = Subject.objects.filter(scheme_id=scheme_id, semester=semester).order_by('name')
+        subjects = Subject.objects.filter(scheme_id=scheme_id, semester=semester)
+        if department:
+            valid_departments = {code for code, _ in DEPARTMENT_CHOICES}
+            if department not in valid_departments:
+                return Response({'error': 'Invalid department'}, status=status.HTTP_400_BAD_REQUEST)
+            subjects = subjects.filter(department=department)
+        subjects = subjects.order_by('name')
         subjects_data = []
         for subject in subjects:
             subjects_data.append({
@@ -312,6 +319,7 @@ def academic_resources_list(request):
         subject_id = request.GET.get('subject')
         semester = request.GET.get('semester')
         search = request.GET.get('search')
+        department = request.GET.get('department')
         
         if category:
             resources = resources.filter(category=category)
@@ -331,6 +339,12 @@ def academic_resources_list(request):
                     {'error': 'Invalid semester value'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+
+        if department:
+            valid_departments = {code for code, _ in DEPARTMENT_CHOICES}
+            if department not in valid_departments:
+                return Response({'error': 'Invalid department'}, status=status.HTTP_400_BAD_REQUEST)
+            resources = resources.filter(subject__department=department)
         
         if search:
             resources = resources.filter(
