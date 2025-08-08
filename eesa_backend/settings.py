@@ -24,27 +24,18 @@ SECRET_KEY = os.environ.get('SECRET_KEY', get_random_secret_key())
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
 # Allowed hosts configuration
-ALLOWED_HOSTS_STR = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1')
+# Default to localhost in DEBUG, and to only the API and WWW domains in production
+ALLOWED_HOSTS_STR = os.environ.get(
+    'ALLOWED_HOSTS',
+    'localhost,127.0.0.1' if DEBUG else 'api.eesacusat.in,www.eesacusat.in'
+)
 if ALLOWED_HOSTS_STR == '*':
     ALLOWED_HOSTS = ['*']
 else:
     ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_STR.split(',') if host.strip()]
 
-# Production-specific allowed hosts
-if not DEBUG:
-    ALLOWED_HOSTS.extend([
-        'eesacusat.in',
-        'www.eesacusat.in',
-        '*.eesacusat.in',
-        '*.onrender.com',
-        'eesabackend.onrender.com',
-        '*.railway.app',
-        '*.herokuapp.com',
-        'localhost',
-        '127.0.0.1',
-        '0.0.0.0'
-    ])
-    ALLOWED_HOSTS = list(dict.fromkeys(ALLOWED_HOSTS))  # Remove duplicates
+# In production, keep ALLOWED_HOSTS tight to avoid unintended exposure.
+# Use the environment variable to expand if needed.
 
 # Application definition
 INSTALLED_APPS = [
@@ -299,7 +290,7 @@ CACHES = {
 CACHE_TTL = 60 * 60 * 24 * 365  # 1 year
 CACHE_KEY_PREFIX = 'eesa_'
 
-# Production security settings
+# Production security settings (behind proxy/CDN)
 if not DEBUG:
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
@@ -310,6 +301,7 @@ if not DEBUG:
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    # Critical to avoid HTTPS redirect loops behind a proxy
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Port configuration for deployment platforms
