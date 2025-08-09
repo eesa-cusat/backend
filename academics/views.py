@@ -4,6 +4,8 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
+from django.views.decorators.csrf import csrf_exempt
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import redirect
@@ -512,8 +514,17 @@ def check_if_liked(resource_id, ip):
         ip_address=ip
     ).exists()
 
+@csrf_exempt
 @api_view(['POST'])
 @permission_classes([AllowAny])
+def toggle_resource_like(request, pk):
+    # Apply basic rate limiting for anonymous users
+    class LikeThrottle(AnonRateThrottle):
+        rate = '10/min'  # Allow max 10 likes per minute per IP
+
+    throttle = LikeThrottle()
+    if not throttle.allow_request(request, None):
+        return Response({'error': 'Rate limit exceeded. Try again later.'}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 def toggle_resource_like(request, pk):
     """Toggle like status for a resource"""
     try:
