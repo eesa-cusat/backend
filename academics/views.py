@@ -1,4 +1,4 @@
-from django.http import HttpResponse
+from django.http import HttpResponse, FileResponse
 from django.db.models import F, Q
 from django.db import transaction
 from django.utils import timezone
@@ -6,10 +6,12 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.throttling import AnonRateThrottle
+from rest_framework.decorators import throttle_classes
 from rest_framework.response import Response
 from rest_framework import status
-from django.shortcuts import redirect
+from django.shortcuts import redirect, get_object_or_404
 import os
+from django.core.cache import cache
 
 from .models import (
     Scheme, Subject, AcademicResource,
@@ -34,33 +36,33 @@ def schemes_list(request):
                 'is_active': scheme.is_active,
             })
         return Response(schemes_data)
-    
+
     elif request.method == 'POST':
         # Check permissions for POST
         if not request.user.is_authenticated:
             return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
-        
+
         if not request.user.is_superuser and not request.user.groups.filter(name='academics_team').exists():
             return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-        
+
         name = request.data.get('name')
         year = request.data.get('year')
-        
+
         if not name:
             return Response({'error': 'Name is required'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         if not year:
             return Response({'error': 'Year is required'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         try:
             year = int(year)
         except (ValueError, TypeError):
             return Response({'error': 'Year must be a valid integer'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         # Check if a scheme with this year already exists
         if Scheme.objects.filter(year=year).exists():
             return Response({'error': f'Scheme for year {year} already exists'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         scheme = Scheme.objects.create(name=name, year=year)
         return Response({
             'id': scheme.id,
@@ -78,7 +80,7 @@ def scheme_detail(request, pk):
         scheme = Scheme.objects.get(pk=pk)
     except Scheme.DoesNotExist:
         return Response({'error': 'Scheme not found'}, status=status.HTTP_404_NOT_FOUND)
-    
+
     if request.method == 'GET':
         return Response({
             'id': scheme.id,
@@ -86,20 +88,20 @@ def scheme_detail(request, pk):
             'year': scheme.year,
             'is_active': scheme.is_active,
         })
-    
+
     elif request.method in ['PUT', 'DELETE']:
         # Check permissions for PUT/DELETE
         if not request.user.is_authenticated:
             return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
-        
+
         if not request.user.is_superuser and not request.user.groups.filter(name='academics_team').exists():
             return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-        
+
         if request.method == 'PUT':
             name = request.data.get('name', scheme.name)
             year = request.data.get('year', scheme.year)
             is_active = request.data.get('is_active', scheme.is_active)
-            
+
             if year != scheme.year:
                 try:
                     year = int(year)
@@ -108,12 +110,12 @@ def scheme_detail(request, pk):
                         return Response({'error': f'Scheme for year {year} already exists'}, status=status.HTTP_400_BAD_REQUEST)
                 except (ValueError, TypeError):
                     return Response({'error': 'Year must be a valid integer'}, status=status.HTTP_400_BAD_REQUEST)
-            
+
             scheme.name = name
             scheme.year = year
             scheme.is_active = is_active
             scheme.save()
-            
+
             return Response({
                 'id': scheme.id,
                 'name': scheme.name,
@@ -121,12 +123,12 @@ def scheme_detail(request, pk):
                 'is_active': scheme.is_active,
                 'message': 'Scheme updated successfully'
             })
-        
+
         elif request.method == 'DELETE':
             # Check if scheme has subjects before deleting
             if scheme.subjects.exists():
                 return Response({'error': 'Cannot delete scheme with existing subjects'}, status=status.HTTP_400_BAD_REQUEST)
-            
+
             scheme.delete()
             return Response({'message': 'Scheme deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
 
@@ -139,10 +141,10 @@ def subjects_by_scheme_semester(request):
         scheme_id = request.GET.get('scheme')
         semester = request.GET.get('semester')
         department = request.GET.get('department')
-        
+
         if not scheme_id or not semester:
             return Response({'error': 'Both scheme and semester are required'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         subjects = Subject.objects.filter(scheme_id=scheme_id, semester=semester)
         if department:
             valid_departments = {code for code, _ in DEPARTMENT_CHOICES}
@@ -160,20 +162,20 @@ def subjects_by_scheme_semester(request):
                 'scheme_name': subject.scheme.name,
             })
         return Response(subjects_data)
-    
+
     elif request.method == 'POST':
         # Check permissions for POST
         if not request.user.is_authenticated:
             return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
-        
+
         if not request.user.is_superuser and not request.user.groups.filter(name='academics_team').exists():
             return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-        
+
         required_fields = ['name', 'code', 'scheme', 'semester']
         for field in required_fields:
             if field not in request.data:
                 return Response({'error': f'{field} is required'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         try:
             scheme = Scheme.objects.get(id=request.data['scheme'])
             subject = Subject.objects.create(
@@ -199,7 +201,7 @@ def subject_detail(request, pk):
         subject = Subject.objects.get(pk=pk)
     except Subject.DoesNotExist:
         return Response({'error': 'Subject not found'}, status=status.HTTP_404_NOT_FOUND)
-    
+
     if request.method == 'GET':
         return Response({
             'id': subject.id,
@@ -212,31 +214,31 @@ def subject_detail(request, pk):
                 'year': subject.scheme.year
             }
         })
-    
+
     elif request.method in ['PUT', 'DELETE']:
         # Check permissions for PUT/DELETE
         if not request.user.is_authenticated:
             return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
-        
+
         if not request.user.is_superuser and not request.user.groups.filter(name='academics_team').exists():
             return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-        
+
         if request.method == 'PUT':
             name = request.data.get('name', subject.name)
             code = request.data.get('code', subject.code)
             semester = request.data.get('semester', subject.semester)
             scheme_id = request.data.get('scheme', subject.scheme.id)
-            
+
             try:
                 if scheme_id != subject.scheme.id:
                     scheme = Scheme.objects.get(id=scheme_id)
                     subject.scheme = scheme
-                
+
                 subject.name = name
                 subject.code = code
                 subject.semester = semester
                 subject.save()
-                
+
                 return Response({
                     'id': subject.id,
                     'name': subject.name,
@@ -246,12 +248,12 @@ def subject_detail(request, pk):
                 })
             except Scheme.DoesNotExist:
                 return Response({'error': 'Scheme not found'}, status=status.HTTP_404_NOT_FOUND)
-        
+
         elif request.method == 'DELETE':
             # Check if subject has resources before deleting
             if subject.resources.exists():
                 return Response({'error': 'Cannot delete subject with existing resources'}, status=status.HTTP_400_BAD_REQUEST)
-            
+
             subject.delete()
             return Response({'message': 'Subject deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
 
@@ -291,10 +293,10 @@ def academic_resources_list(request):
     """List academic resources with filtering (GET) or upload new resource (POST)"""
     if request.method == 'GET':
         # Check if user is authenticated and has admin permissions
-        is_admin = (request.user.is_authenticated and 
-                   (request.user.is_superuser or 
+        is_admin = (request.user.is_authenticated and
+                   (request.user.is_superuser or
                     request.user.groups.filter(name='academics_team').exists()))
-        
+
         # For public users, only show approved resources
         # For admins, show all resources or filter by approval status
         if is_admin:
@@ -309,13 +311,13 @@ def academic_resources_list(request):
         else:
             # Public users only see approved resources
             resources = AcademicResource.objects.filter(is_approved=True)
-        
+
         resources = resources.select_related(
             'subject',
             'subject__scheme',
             'uploaded_by'
         )
-        
+
         # Get filter parameters
         category = request.GET.get('category')
         scheme_id = request.GET.get('scheme')
@@ -323,16 +325,16 @@ def academic_resources_list(request):
         semester = request.GET.get('semester')
         search = request.GET.get('search')
         department = request.GET.get('department')
-        
+
         if category:
             resources = resources.filter(category=category)
-        
+
         if scheme_id:
             resources = resources.filter(subject__scheme_id=scheme_id)
-        
+
         if subject_id:
             resources = resources.filter(subject_id=subject_id)
-        
+
         if semester:
             try:
                 semester = int(semester)
@@ -348,7 +350,7 @@ def academic_resources_list(request):
             if department not in valid_departments:
                 return Response({'error': 'Invalid department'}, status=status.HTTP_400_BAD_REQUEST)
             resources = resources.filter(subject__department=department)
-        
+
         if search:
             resources = resources.filter(
                 Q(title__icontains=search) |
@@ -356,7 +358,7 @@ def academic_resources_list(request):
                 Q(subject__name__icontains=search) |
                 Q(subject__code__icontains=search)
             )
-        
+
         resources_data = []
         for resource in resources:
             resources_data.append({
@@ -389,29 +391,29 @@ def academic_resources_list(request):
                 'is_liked': check_if_liked(resource.id, get_client_ip(request)),
                 'download_count': resource.download_count
             })
-        
+
         return Response({
             'count': len(resources_data),
             'results': resources_data
         })
-    
+
     elif request.method == 'POST':
         # Check permissions for POST
         if not request.user.is_authenticated:
             return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
-        
+
         if not request.user.is_superuser and not request.user.groups.filter(name='academics_team').exists():
             return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-        
+
         # Use admin serializer for admin users
-        is_admin = (request.user.is_superuser or 
+        is_admin = (request.user.is_superuser or
                    request.user.groups.filter(name='academics_team').exists())
-        
+
         if is_admin:
             serializer = AcademicResourceAdminSerializer(data=request.data, context={'request': request})
         else:
             serializer = AcademicResourceSerializer(data=request.data, context={'request': request})
-        
+
         if serializer.is_valid():
             resource = serializer.save(uploaded_by=request.user)
             return Response({
@@ -428,7 +430,7 @@ def unverified_notes(request):
     """List unverified notes (academics team only)"""
     # Check if user has academics team permission (handled by permission class)
     resources = AcademicResource.objects.filter(is_approved=False).select_related('subject', 'uploaded_by').order_by('-created_at')
-    
+
     resources_data = []
     for resource in resources:
         resources_data.append({
@@ -461,7 +463,7 @@ def approve_note(request, pk):
         resource.approved_by = request.user
         resource.approved_at = timezone.now()
         resource.save()
-        
+
         return Response({
             'message': 'Note approved successfully',
             'resource_id': resource.id
@@ -476,7 +478,7 @@ def toggle_approval_status(request, pk):
     """Toggle approval status of a resource (academics team only)"""
     try:
         resource = AcademicResource.objects.get(pk=pk)
-        
+
         # Toggle the approval status
         if resource.is_approved:
             resource.is_approved = False
@@ -488,9 +490,9 @@ def toggle_approval_status(request, pk):
             resource.approved_by = request.user
             resource.approved_at = timezone.now()
             message = 'Resource approved successfully'
-        
+
         resource.save()
-        
+
         return Response({
             'message': message,
             'resource_id': resource.id,
@@ -514,30 +516,25 @@ def check_if_liked(resource_id, ip):
         ip_address=ip
     ).exists()
 
-@csrf_exempt
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def toggle_resource_like(request, pk):
-    # Apply basic rate limiting for anonymous users
-    class LikeThrottle(AnonRateThrottle):
-        rate = '10/min'  # Allow max 10 likes per minute per IP
-
-    throttle = LikeThrottle()
-    if not throttle.allow_request(request, None):
-        return Response({'error': 'Rate limit exceeded. Try again later.'}, status=status.HTTP_429_TOO_MANY_REQUESTS)
-def toggle_resource_like(request, pk):
-    """Toggle like status for a resource"""
+    """Toggle like status for a resource with rate-limiting"""
     try:
+        ip = get_client_ip(request)
+        session_key = request.session.session_key or 'no-session'
+        rate_key = f"like-rate:{ip}:{session_key}"
+        current_count = cache.get(rate_key, 0)
+        if current_count >= 10:
+            return Response({'error': 'Rate limit exceeded. Try again later.'}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        cache.set(rate_key, current_count + 1, timeout=60)
         with transaction.atomic():
             resource = AcademicResource.objects.get(pk=pk, is_approved=True)
-            ip = get_client_ip(request)
-            
             # Check if already liked
             like_exists = ResourceLike.objects.filter(
                 resource=resource,
                 ip_address=ip
             ).exists()
-            
             if like_exists:
                 # Unlike: Remove like record and decrease count
                 ResourceLike.objects.filter(
@@ -554,17 +551,15 @@ def toggle_resource_like(request, pk):
                 )
                 resource.like_count = F('like_count') + 1
                 liked = True
-            
             resource.save()
             resource.refresh_from_db()
-            
             return Response({
                 'liked': liked,
                 'like_count': resource.like_count
             })
-            
     except AcademicResource.DoesNotExist:
         return Response({'error': 'Resource not found'}, status=status.HTTP_404_NOT_FOUND)
+
 
 @api_view(['GET', 'PUT', 'DELETE'])
 def academic_resource_detail(request, pk):
@@ -575,17 +570,17 @@ def academic_resource_detail(request, pk):
             'subject__scheme',
             'uploaded_by'
         ).get(pk=pk)
-        
+
         # For GET requests, only show approved resources to public
         if request.method == 'GET' and not resource.is_approved:
             if not request.user.is_authenticated or (not request.user.is_superuser and not request.user.groups.filter(name='academics_team').exists()):
                 return Response({'error': 'Resource not found'}, status=status.HTTP_404_NOT_FOUND)
-        
+
         if request.method == 'GET':
             # Check if the current IP has liked this resource
             ip = get_client_ip(request)
             is_liked = check_if_liked(pk, ip)
-            
+
             resource_data = {
                 'id': resource.id,
                 'title': resource.title,
@@ -618,28 +613,28 @@ def academic_resource_detail(request, pk):
                 'download_count': resource.download_count
             }
             return Response(resource_data)
-        
+
         elif request.method in ['PUT', 'DELETE']:
             # Check permissions for PUT/DELETE
             if not request.user.is_authenticated:
                 return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
-            
+
             # Only allow resource owner, academics team, or superuser to modify
-            if not (request.user.is_superuser or 
-                    request.user.groups.filter(name='academics_team').exists() or 
+            if not (request.user.is_superuser or
+                    request.user.groups.filter(name='academics_team').exists() or
                     resource.uploaded_by == request.user):
                 return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-            
+
             if request.method == 'PUT':
                 # Use admin serializer for admin users, regular serializer for resource owners
-                is_admin = (request.user.is_superuser or 
+                is_admin = (request.user.is_superuser or
                            request.user.groups.filter(name='academics_team').exists())
-                
+
                 if is_admin:
                     serializer = AcademicResourceAdminSerializer(resource, data=request.data, partial=True, context={'request': request})
                 else:
                     serializer = AcademicResourceSerializer(resource, data=request.data, partial=True, context={'request': request})
-                
+
                 if serializer.is_valid():
                     updated_resource = serializer.save()
                     return Response({
@@ -649,7 +644,7 @@ def academic_resource_detail(request, pk):
                         'message': 'Resource updated successfully'
                     })
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            
+
             elif request.method == 'DELETE':
                 # Delete the file if it exists
                 if resource.file:
@@ -657,10 +652,10 @@ def academic_resource_detail(request, pk):
                         resource.file.delete()
                     except Exception:
                         pass  # Continue even if file deletion fails
-                
+
                 resource.delete()
                 return Response({'message': 'Resource deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
-                
+
     except AcademicResource.DoesNotExist:
         return Response({'error': 'Resource not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -669,32 +664,28 @@ def academic_resource_detail(request, pk):
 def download_academic_resource(request, pk):
     """Download academic resource file and increment counter"""
     try:
-        with transaction.atomic():
-            resource = AcademicResource.objects.get(pk=pk, is_approved=True)
-            
-            if not resource.file:
-                return Response({'error': 'File not found'}, status=status.HTTP_404_NOT_FOUND)
-            
-            # Increment download count
-            resource.download_count = F('download_count') + 1
-            resource.save()
-            
-            # If Cloudinary URL, redirect to it for optimized delivery
-            file_url = resource.file_url or (resource.file.url if hasattr(resource.file, 'url') else str(resource.file))
-            if file_url and 'res.cloudinary.com' in file_url:
-                return redirect(file_url)
+        resource = get_object_or_404(AcademicResource, pk=pk, is_approved=True)
 
-            # Fallback: serve local file in development
-            file_path = getattr(resource.file, 'path', None)
-            if not file_path or not os.path.exists(file_path):
-                return Response({'error': 'File not found on disk'}, status=status.HTTP_404_NOT_FOUND)
+        if not resource.file:
+            return Response({'error': 'File not found'}, status=status.HTTP_404_NOT_FOUND)
 
-            with open(file_path, 'rb') as f:
-                response = HttpResponse(f.read(), content_type='application/octet-stream')
-                response['Content-Disposition'] = f'attachment; filename="{os.path.basename(file_path)}"'
-                return response
-                
+        # Increment download count using F() expression for atomic update
+        resource.download_count = F('download_count') + 1
+        resource.save(update_fields=['download_count'])
+        resource.refresh_from_db()
+
+        # If Cloudinary URL, redirect to it for optimized delivery
+        if 'res.cloudinary.com' in str(resource.file):
+            return redirect(resource.file.url)
+
+        # Fallback: serve local file
+        file_path = resource.file.path
+        response = FileResponse(open(file_path, 'rb'), as_attachment=True, filename=os.path.basename(file_path))
+        return response
+
     except AcademicResource.DoesNotExist:
         return Response({'error': 'Resource not found'}, status=status.HTTP_404_NOT_FOUND)
+    except FileNotFoundError:
+        return Response({'error': 'File not found on disk'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
