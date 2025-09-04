@@ -419,6 +419,29 @@ USING gin(to_tsvector('english',
 4. **Monitor Performance**: Check execution time after applying
 5. **Storage Impact**: Indexes will use ~10-15% additional storage
 
+## 🛠️ Easy Application Methods
+
+### Method 1: Django Management Command (Recommended)
+```bash
+# Apply all indexes at once
+python manage.py apply_all_indexes
+
+# Apply specific module only
+python manage.py apply_all_indexes --module events
+python manage.py apply_all_indexes --module placements
+
+# Test first with dry-run
+python manage.py apply_all_indexes --dry-run
+```
+
+### Method 2: Standalone Python Script
+```bash
+python scripts/apply_all_production_indexes.py
+```
+
+### Method 3: Manual via Supabase SQL Editor
+Copy and paste the SQL commands above one by one into Supabase SQL Editor.
+
 ## 🎯 Next Phase: Application Layer Optimization
 
 After applying these indexes, the next optimization would be:
