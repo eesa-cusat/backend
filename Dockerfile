@@ -80,17 +80,6 @@ python manage.py migrate --noinput\n\
 echo "🔄 Initializing cache..."\n\
 python manage.py init_cache || echo "Cache initialization skipped"\n\
 \n\
-# Apply production indexes (after migrations complete)\n\
-echo "📊 Applying production indexes..."\n\
-python manage.py apply_production_indexes --force || echo "Academics indexes skipped or failed"\n\
-python manage.py apply_accounts_indexes || echo "Accounts indexes skipped or failed"\n\
-python manage.py apply_events_indexes || echo "Events indexes skipped or failed"\n\
-python manage.py apply_projects_indexes || echo "Projects indexes skipped or failed"\n\
-python manage.py apply_gallery_indexes || echo "Gallery indexes skipped or failed"\n\
-python manage.py apply_placements_indexes || echo "Placements indexes skipped or failed"\n\
-python manage.py apply_alumni_indexes || echo "Alumni indexes skipped or failed"\n\
-python manage.py apply_careers_indexes || echo "Careers indexes skipped or failed"\n\
-\n\
 # Collect static files (Cloudinary handles them automatically)\n\
 echo "📦 Collecting static files..."\n\
 python manage.py collectstatic --noinput\n\

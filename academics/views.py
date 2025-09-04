@@ -151,7 +151,7 @@ def academics_batch_data(request):
                 elif is_approved.lower() == 'false':
                     resources_query = resources_query.filter(is_approved=False)
         else:
-            # Public users only see approved resources (uses partial index)
+            # Public users only see approved resources
             resources_query = resources_query.filter(is_approved=True)
         
         # Apply other filters in order of selectivity
@@ -168,7 +168,7 @@ def academics_batch_data(request):
         if department and department in [code for code, _ in DEPARTMENT_CHOICES]:
             resources_query = resources_query.filter(subject__department=department)
         
-        # Apply search last (least selective, but uses full-text index in PostgreSQL)
+        # Apply search filtering
         if search:
             if connection.vendor == 'postgresql':
                 # Use PostgreSQL full-text search for better performance
@@ -185,7 +185,7 @@ def academics_batch_data(request):
                     Q(subject__code__icontains=search)
                 )
         
-        # Order by created_at (uses index)
+        # Order by most recent first
         resources_query = resources_query.order_by('-created_at')
         
         # Limit to prevent excessive memory usage
