@@ -76,6 +76,14 @@ python manage.py makemigrations || echo "No changes detected"\n\
 echo "🗄️ Running migrations..."\n\
 python manage.py migrate --noinput\n\
 \n\
+# Initialize cache system\n\
+echo "🔄 Initializing cache..."\n\
+python manage.py init_cache || echo "Cache initialization skipped"\n\
+\n\
+# Apply production indexes (after migrations complete)\n\
+echo "📊 Applying production indexes..."\n\
+python manage.py apply_production_indexes --force || echo "Index application skipped or failed"\n\
+\n\
 # Collect static files (Cloudinary handles them automatically)\n\
 echo "📦 Collecting static files..."\n\
 python manage.py collectstatic --noinput\n\

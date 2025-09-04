@@ -15,67 +15,66 @@ def apply_postgresql_indexes(apps, schema_editor):
     with connection.cursor() as cursor:
         # 1. Composite index for the most common query pattern (scheme + semester + department + approval)
         cursor.execute("""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_resource_main_filter 
+            CREATE INDEX IF NOT EXISTS idx_resource_main_filter 
             ON academics_academicresource (subject_id, category, is_approved, created_at DESC);
         """)
         
         # 2. Subject filtering optimization (scheme + semester + department)
         cursor.execute("""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_subject_scheme_sem_dept 
+            CREATE INDEX IF NOT EXISTS idx_subject_scheme_sem_dept 
             ON academics_subject (scheme_id, semester, department);
         """)
         
         # 3. Partial index for approved resources only (90% of queries)
         cursor.execute("""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_approved_resources 
+            CREATE INDEX IF NOT EXISTS idx_approved_resources 
             ON academics_academicresource (created_at DESC, category) 
             WHERE is_approved = true;
         """)
         
         # 4. Search optimization index
         cursor.execute("""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_resource_search 
+            CREATE INDEX IF NOT EXISTS idx_resource_search 
             ON academics_academicresource (title, is_approved, category);
         """)
         
         # 5. User resources index (for admin and user dashboards)
         cursor.execute("""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_user_resources 
+            CREATE INDEX IF NOT EXISTS idx_user_resources 
             ON academics_academicresource (uploaded_by_id, created_at DESC) 
             WHERE is_approved = true;
         """)
         
         # 6. Popular resources index (like + download count)
         cursor.execute("""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_popular_resources 
+            CREATE INDEX IF NOT EXISTS idx_popular_resources 
             ON academics_academicresource (like_count DESC, download_count DESC) 
             WHERE is_approved = true;
         """)
         
-        # 7. Full-text search index (PostgreSQL GIN - major performance boost)
+        # 7. Basic text search index (without GIN to avoid transaction issues)
         cursor.execute("""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_resource_fulltext 
-            ON academics_academicresource 
-            USING gin(to_tsvector('english', title || ' ' || COALESCE(description, '')));
+            CREATE INDEX IF NOT EXISTS idx_resource_title_search 
+            ON academics_academicresource (title) 
+            WHERE is_approved = true;
         """)
         
-        # 8. Subject search index
+        # 8. Subject name search
         cursor.execute("""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_subject_search 
-            ON academics_subject 
-            USING gin(to_tsvector('english', name || ' ' || code));
+            CREATE INDEX IF NOT EXISTS idx_subject_name_search 
+            ON academics_subject (name, code);
         """)
         
         # 9. File size filtering (for mobile optimization)
         cursor.execute("""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_resource_size 
+            CREATE INDEX IF NOT EXISTS idx_resource_size 
             ON academics_academicresource (file_size, category) 
             WHERE is_approved = true AND file_size IS NOT NULL;
         """)
         
         # 10. Resource likes optimization
         cursor.execute("""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_resource_likes 
+            CREATE INDEX IF NOT EXISTS idx_resource_likes 
             ON academics_resourcelike (resource_id, ip_address);
         """)
         
@@ -95,14 +94,14 @@ def remove_postgresql_indexes(apps, schema_editor):
             'idx_resource_search',
             'idx_user_resources',
             'idx_popular_resources',
-            'idx_resource_fulltext',
-            'idx_subject_search',
+            'idx_resource_title_search',
+            'idx_subject_name_search',
             'idx_resource_size',
             'idx_resource_likes'
         ]
         
         for index_name in indexes_to_drop:
-            cursor.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {index_name};")
+            cursor.execute(f"DROP INDEX IF EXISTS {index_name};")
 
 
 def apply_sqlite_indexes(apps, schema_editor):
