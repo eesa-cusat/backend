@@ -5,6 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import F, Q
 from django.db import transaction
 from django.utils import timezone
+from django.conf import settings
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
@@ -14,9 +15,9 @@ import json
 from django.core.cache import cache
 
 from .models import (
-    Scheme, Subject, AcademicResource,
-    ResourceLike, ACADEMIC_CATEGORIES
+    Scheme, Subject, AcademicResource, ResourceLike, ACADEMIC_CATEGORIES
 )
+from .rate_limiting import rate_limit_by_ip_and_resource
 from .serializers import AcademicResourceSerializer
 
 
@@ -354,11 +355,35 @@ def approve_note(request, pk):
 
 
 def get_client_ip(request):
-    """Helper function to get client IP address"""
+    """
+    Helper function to get client IP address with multiple fallbacks
+    Handles proxy servers, load balancers, and CDNs
+    """
+    # Try common proxy headers first
     x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
     if x_forwarded_for:
-        return x_forwarded_for.split(',')[0]
-    return request.META.get('REMOTE_ADDR')
+        # Take the first IP in the chain (original client)
+        ip = x_forwarded_for.split(',')[0].strip()
+        if ip:
+            return ip
+    
+    # Try other common headers
+    x_real_ip = request.META.get('HTTP_X_REAL_IP')
+    if x_real_ip:
+        return x_real_ip.strip()
+    
+    # Cloudflare
+    cf_connecting_ip = request.META.get('HTTP_CF_CONNECTING_IP')
+    if cf_connecting_ip:
+        return cf_connecting_ip.strip()
+    
+    # Fallback to direct connection
+    remote_addr = request.META.get('REMOTE_ADDR')
+    if remote_addr:
+        return remote_addr.strip()
+    
+    # Last resort
+    return '127.0.0.1'
 
 def check_if_liked(resource_id, ip):
     """Check if an IP has liked a resource"""
@@ -369,46 +394,75 @@ def check_if_liked(resource_id, ip):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@csrf_exempt  # Safe for public API - uses IP-based uniqueness constraints
+@rate_limit_by_ip_and_resource(max_requests=10, window_seconds=60)  # Prevent abuse
 def toggle_resource_like(request, pk):
-    """Toggle like status for a resource"""
+    """
+    Toggle like status for a resource
+    
+    Security Notes:
+    - CSRF exempt because this is a public API endpoint
+    - Uses IP-based tracking to ensure one like per IP per resource
+    - Database constraints prevent duplicate likes
+    - Atomic transactions prevent race conditions
+    """
     try:
         with transaction.atomic():
-            resource = AcademicResource.objects.get(pk=pk, is_approved=True)
+            resource = AcademicResource.objects.select_for_update().get(
+                pk=pk, 
+                is_approved=True
+            )
             ip = get_client_ip(request)
             
-            # Check if already liked
-            like_exists = ResourceLike.objects.filter(
-                resource=resource,
-                ip_address=ip
-            ).exists()
+            # Validate IP address
+            if not ip:
+                return Response({
+                    'error': 'Unable to determine client IP'
+                }, status=status.HTTP_400_BAD_REQUEST)
             
-            if like_exists:
-                # Unlike: Remove like record and decrease count
-                ResourceLike.objects.filter(
-                    resource=resource,
-                    ip_address=ip
-                ).delete()
-                resource.like_count = F('like_count') - 1
-                liked = False
-            else:
-                # Like: Create like record and increase count
-                ResourceLike.objects.create(
-                    resource=resource,
-                    ip_address=ip
-                )
+            # Check if already liked by this IP
+            like_obj, created = ResourceLike.objects.get_or_create(
+                resource=resource,
+                ip_address=ip,
+                defaults={}
+            )
+            
+            if created:
+                # New like created
                 resource.like_count = F('like_count') + 1
                 liked = True
+                message = 'Resource liked successfully'
+            else:
+                # Like already exists, remove it (unlike)
+                like_obj.delete()
+                resource.like_count = F('like_count') - 1
+                liked = False
+                message = 'Resource unliked successfully'
             
             resource.save()
             resource.refresh_from_db()
             
             return Response({
                 'liked': liked,
-                'like_count': resource.like_count
+                'like_count': resource.like_count,
+                'message': message,
+                'resource_id': resource.id
             })
             
     except AcademicResource.DoesNotExist:
+        return Response({
+            'error': 'Resource not found or not approved'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'error': 'Failed to update like status',
+            'details': str(e) if settings.DEBUG else 'Internal server error'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+    except AcademicResource.DoesNotExist:
         return Response({'error': 'Resource not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
 def academic_resource_detail(request, pk):
@@ -474,6 +528,29 @@ def upload_academic_resource(request):
 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
+def get_resource_stats(request, pk):
+    """Get resource statistics (likes, downloads) for real-time updates"""
+    try:
+        resource = AcademicResource.objects.get(pk=pk, is_approved=True)
+        ip = get_client_ip(request)
+        is_liked = check_if_liked(pk, ip)
+        
+        return Response({
+            'id': resource.id,
+            'like_count': resource.like_count,
+            'download_count': resource.download_count,
+            'is_liked': is_liked,
+            'view_count': getattr(resource, 'view_count', 0)
+        })
+        
+    except AcademicResource.DoesNotExist:
+        return Response({'error': 'Resource not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@rate_limit_by_ip_and_resource(max_requests=20, window_seconds=60)  # Allow more downloads than likes
 def download_academic_resource(request, pk):
     """Download academic resource file and increment counter"""
     try:
@@ -483,9 +560,9 @@ def download_academic_resource(request, pk):
             if not resource.file:
                 return Response({'error': 'File not found'}, status=status.HTTP_404_NOT_FOUND)
             
-            # Increment download count
+            # Increment download count atomically
             resource.download_count = F('download_count') + 1
-            resource.save()
+            resource.save(update_fields=['download_count'])
             
             # Get the file path
             file_path = resource.file.path
@@ -493,13 +570,21 @@ def download_academic_resource(request, pk):
             if not os.path.exists(file_path):
                 return Response({'error': 'File not found on disk'}, status=status.HTTP_404_NOT_FOUND)
             
+            # Get proper filename
+            filename = os.path.basename(file_path)
+            if not filename:
+                filename = f"{resource.title}.pdf"  # fallback filename
+            
             # Open and serve the file
             with open(file_path, 'rb') as f:
                 response = HttpResponse(f.read(), content_type='application/octet-stream')
-                response['Content-Disposition'] = f'attachment; filename="{os.path.basename(file_path)}"'
+                response['Content-Disposition'] = f'attachment; filename="{filename}"'
+                response['Content-Length'] = os.path.getsize(file_path)
                 return response
                 
     except AcademicResource.DoesNotExist:
         return Response({'error': 'Resource not found'}, status=status.HTTP_404_NOT_FOUND)
+    except FileNotFoundError:
+        return Response({'error': 'File not found on disk'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'error': f'Download failed: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

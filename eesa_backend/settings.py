@@ -23,15 +23,28 @@ CLOUDINARY_API_SECRET = os.environ.get('CLOUDINARY_API_SECRET')
 SECRET_KEY = os.environ.get('SECRET_KEY', get_random_secret_key())
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
-# Allowed hosts configuration - CORS-centric setup (API-only host in prod)
-ALLOWED_HOSTS_STR = os.environ.get(
-    'ALLOWED_HOSTS',
-    'localhost,127.0.0.1' if DEBUG else 'api.eesacusat.in'
-)
+# Allowed hosts configuration
+ALLOWED_HOSTS_STR = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1')
 if ALLOWED_HOSTS_STR == '*':
     ALLOWED_HOSTS = ['*']
 else:
     ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_STR.split(',') if host.strip()]
+
+# Production-specific allowed hosts
+if not DEBUG:
+    ALLOWED_HOSTS.extend([
+        'eesacusat.in',
+        'www.eesacusat.in',
+        '*.eesacusat.in',
+        '*.onrender.com',
+        'eesabackend.onrender.com',
+        '*.railway.app',
+        '*.herokuapp.com',
+        'localhost',
+        '127.0.0.1',
+        '0.0.0.0'
+    ])
+    ALLOWED_HOSTS = list(dict.fromkeys(ALLOWED_HOSTS))  # Remove duplicates
 
 # Application definition
 INSTALLED_APPS = [
@@ -88,7 +101,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'eesa_backend.wsgi.application'
 
-# Database configuration with optimizations for production
+# Database configuration
 if DEBUG:
     DATABASES = {
         'default': {
@@ -97,7 +110,7 @@ if DEBUG:
         }
     }
 else:
-    # Production - PostgreSQL with connection pooling and optimizations for Supabase
+    # Production - PostgreSQL with fallback to SQLite
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
@@ -106,13 +119,6 @@ else:
             'PASSWORD': os.environ.get('DB_PASSWORD'),
             'HOST': os.environ.get('DB_HOST'),
             'PORT': os.environ.get('DB_PORT', '5432'),
-            'OPTIONS': {
-                'sslmode': 'require',  # Required for Supabase
-                'connect_timeout': 10,
-                'options': '-c default_transaction_isolation=read_committed'
-            },
-            'CONN_MAX_AGE': 300,  # Keep connections alive for 5 minutes
-            'CONN_HEALTH_CHECKS': True,  # Check connection health
         }
     } if all([os.environ.get('DB_PASSWORD'), os.environ.get('DB_HOST')]) else {
         'default': {
@@ -214,33 +220,19 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
-    'DEFAULT_RENDERER_CLASSES': [
-        'rest_framework.renderers.JSONRenderer',
-    ] if not DEBUG else [
-        'rest_framework.renderers.JSONRenderer',
-        'rest_framework.renderers.BrowsableAPIRenderer',
-    ],
-    'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle'
-    ],
-    'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/hour',
-        'user': '1000/hour'
-    }
 }
 
-# CORS configuration - Updated for cross-origin requests
+# CORS configuration
 if DEBUG:
     # Development CORS settings
-    dev_cors = os.environ.get(
-        'DEV_CORS_ALLOWED_ORIGINS',
-        'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:5173,http://127.0.0.1:5173'
-    )
+    dev_cors = os.environ.get('DEV_CORS_ALLOWED_ORIGINS', 
+                             'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:5173,http://127.0.0.1:5173')
     CORS_ALLOWED_ORIGINS = [origin.strip() for origin in dev_cors.split(',') if origin.strip()]
 else:
-    # Production CORS settings - Now allow frontend domain (was empty before)
-    CORS_ALLOWED_ORIGINS = ['https://www.eesacusat.in']
+    # Production CORS settings
+    cors_origins = os.environ.get('CORS_ALLOWED_ORIGINS', 
+                                 'https://eesacusat.in,https://www.eesacusat.in')
+    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_METHODS = [
@@ -264,94 +256,34 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-# CSRF configuration - Updated for cross-origin requests
-CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript to read CSRF token
-CSRF_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'  # Required for cross-origin
-CSRF_COOKIE_SECURE = True if not DEBUG else False  # Required with SameSite=None in production
-CSRF_USE_SESSIONS = False
-
-# Session configuration
-SESSION_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'  # Required for cross-origin
-SESSION_COOKIE_SECURE = True if not DEBUG else False  # Required with SameSite=None in production
-SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_AGE = 86400  # 24 hours
-
-# Cookie domains: keep host-only by default. Uncomment env-based control if cross-subdomain cookies are needed.
-# Example:
-# SESSION_COOKIE_DOMAIN = os.environ.get('SESSION_COOKIE_DOMAIN')
-# CSRF_COOKIE_DOMAIN = os.environ.get('CSRF_COOKIE_DOMAIN')
-
-# CSRF trusted origins - Updated for new setup
+# CSRF configuration
 if DEBUG:
-    # Development CSRF settings
+    # Development CSRF settings - allow frontend origins
     dev_csrf = os.environ.get('DEV_CSRF_TRUSTED_ORIGINS', 
                              'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:5173,http://127.0.0.1:5173')
     CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in dev_csrf.split(',') if origin.strip()]
 else:
-    # Production CSRF settings - trust only frontend origin by default
-    csrf_origins = os.environ.get('CSRF_TRUSTED_ORIGINS', 'https://www.eesacusat.in')
+    # Production CSRF settings
+    csrf_origins = os.environ.get('CSRF_TRUSTED_ORIGINS', 
+                                 'https://eesacusat.in,https://www.eesacusat.in')
     CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in csrf_origins.split(',') if origin.strip()]
 
-# Admin site customization - Updated for new URL
+# Admin site customization
 ADMIN_SITE_HEADER = "EESA Backend Administration"
 ADMIN_SITE_TITLE = "EESA Admin Portal"
 ADMIN_INDEX_TITLE = "Welcome to EESA Backend Administration"
 
-# Cache configuration - Production-optimized
-if DEBUG:
-    # Development: Simple in-memory cache
-    CACHES = {
-        'default': {
-            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-            'LOCATION': 'eesa-dev-cache',
-            'OPTIONS': {
-                'MAX_ENTRIES': 1000,
-                'CULL_FREQUENCY': 3,
-            }
-        }
+# Cache configuration
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'eesa-cache',
     }
-else:
-    # Production: Use Redis if available, fallback to database cache
-    redis_url = os.environ.get('REDIS_URL')
-    if redis_url:
-        CACHES = {
-            'default': {
-                'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-                'LOCATION': redis_url,
-                'OPTIONS': {
-                    'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-                    'CONNECTION_POOL_KWARGS': {
-                        'max_connections': 20,
-                        'retry_on_timeout': True,
-                    },
-                    'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
-                    'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
-                },
-                'KEY_PREFIX': 'eesa_prod',
-                'TIMEOUT': 300,  # 5 minutes default
-            }
-        }
-    else:
-        # Fallback to database cache for Render/Supabase
-        CACHES = {
-            'default': {
-                'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
-                'LOCATION': 'eesa_cache_table',
-                'OPTIONS': {
-                    'MAX_ENTRIES': 5000,
-                    'CULL_FREQUENCY': 3,
-                },
-                'TIMEOUT': 300,
-            }
-        }
+}
 
 # Cache settings
-CACHE_TTL = 60 * 60 * 24  # 24 hours for static data
+CACHE_TTL = 60 * 60 * 24 * 365  # 1 year
 CACHE_KEY_PREFIX = 'eesa_'
-
-# Session cache (use same cache backend)
-SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
-SESSION_CACHE_ALIAS = 'default'
 
 # Production security settings
 if not DEBUG:
@@ -362,6 +294,9 @@ if not DEBUG:
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Port configuration for deployment platforms
 import os

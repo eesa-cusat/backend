@@ -20,6 +20,7 @@ urlpatterns = [
     # Academic Resources endpoints
     path('resources/', views.academic_resources_list, name='academic_resources_list'),
     path('resources/<int:pk>/', views.academic_resource_detail, name='academic_resource_detail'),
+    path('resources/<int:pk>/stats/', views.get_resource_stats, name='get_resource_stats'),
     path('resources/<int:pk>/download/', views.download_academic_resource, name='download_academic_resource'),
     path('resources/upload/', views.upload_academic_resource, name='upload_academic_resource'),
     path('resources/<int:pk>/like/', views.toggle_resource_like, name='toggle_resource_like'),
