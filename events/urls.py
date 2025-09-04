@@ -5,7 +5,7 @@ from . import notification_views
 
 # Create router for viewsets
 router = DefaultRouter()
-router.register(r'events', views.EventViewSet, basename='event')
+router.register(r'', views.EventViewSet, basename='event')  # Main events endpoint at /api/events/
 router.register(r'registrations', views.EventRegistrationViewSet, basename='eventregistration')
 router.register(r'speakers', views.EventSpeakerViewSet, basename='eventspeaker')
 router.register(r'schedules', views.EventScheduleViewSet, basename='eventschedule')
