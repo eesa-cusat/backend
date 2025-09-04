@@ -5,7 +5,6 @@ from django.db.models import Q, Count, Prefetch
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.core.cache import cache
-from performance_optimizations import cache_response, smart_pagination
 from .models import Event, EventRegistration, EventSpeaker, EventSchedule, EventFeedback
 from .serializers import (
     EventSerializer, EventListSerializer, EventRegistrationSerializer,
@@ -278,7 +277,6 @@ class EventFeedbackViewSet(viewsets.ModelViewSet):
 # Additional utility views with caching
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
-@cache_response(timeout=600, key_prefix='upcoming_events')  # Cache for 10 minutes
 def upcoming_events(request):
     """Get upcoming events for display"""
     events = Event.objects.filter(
@@ -295,7 +293,6 @@ def upcoming_events(request):
 
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
-@cache_response(timeout=3600, key_prefix='featured_events')  # Cache for 1 hour
 def featured_events(request):
     """Get featured events"""
     events = Event.objects.filter(
@@ -312,7 +309,6 @@ def featured_events(request):
 
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
-@cache_response(timeout=1800, key_prefix='event_stats')  # Cache for 30 minutes
 def event_stats(request):
     """Get event statistics"""
     cache_key = 'event_statistics'

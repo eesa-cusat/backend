@@ -5,7 +5,6 @@ from django_filters import rest_framework as filters
 from django.db.models import Q, Count, Prefetch
 from django.shortcuts import get_object_or_404
 from django.core.cache import cache
-from performance_optimizations import cache_response, smart_pagination
 
 from .models import GalleryCategory, GalleryImage, GalleryAlbum
 from .serializers import (
@@ -19,7 +18,6 @@ from .serializers import (
 
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
-@cache_response(timeout=1800, key_prefix='gallery_batch')  # Cache for 30 minutes
 def gallery_batch_data(request):
     """Optimized batch endpoint for gallery page - loads everything at once"""
     category_id = request.GET.get('category')
@@ -188,7 +186,6 @@ class GalleryImageViewSet(viewsets.ModelViewSet):
         return GalleryImageSerializer
     
     @action(detail=False, methods=['get'])
-    @cache_response(timeout=3600, key_prefix='gallery_featured')
     def featured(self, request):
         """Get featured images"""
         images = self.get_queryset().filter(is_featured=True).select_related('album', 'album__category')
@@ -196,7 +193,6 @@ class GalleryImageViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
-    @cache_response(timeout=1800, key_prefix='gallery_by_category')
     def by_category(self, request):
         """Get images grouped by category"""
         categories = GalleryCategory.objects.filter(is_active=True).prefetch_related(
@@ -222,7 +218,6 @@ class GalleryImageViewSet(viewsets.ModelViewSet):
         return Response(result)
     
     @action(detail=False, methods=['get'])
-    @cache_response(timeout=900, key_prefix='gallery_recent')
     def recent(self, request):
         """Get recent images"""
         images = self.get_queryset().filter(is_public=True).select_related('album', 'album__category')[:20]

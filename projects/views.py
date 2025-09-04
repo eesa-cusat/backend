@@ -3,7 +3,6 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from django.db.models import Q, Count, Prefetch
 from django.core.cache import cache
-from performance_optimizations import cache_response, smart_pagination
 from accounts.permissions import IsOwnerOrReadOnly, IsAcademicsTeamOrReadOnly
 from .models import Project, ProjectImage, ProjectVideo, TeamMember
 from .serializers import (
@@ -14,7 +13,6 @@ from .serializers import (
 
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
-@cache_response(timeout=900, key_prefix='projects_batch')  # Cache for 15 minutes
 def projects_batch_data(request):
     """Optimized batch endpoint for projects page - loads everything at once"""
     # Get filter parameters
@@ -214,7 +212,6 @@ def my_projects(request):
 
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
-@cache_response(timeout=1800, key_prefix='featured_projects')  # Cache for 30 minutes
 def featured_projects(request):
     """Get featured projects for homepage"""
     # Get featured projects that are published
