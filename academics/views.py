@@ -15,10 +15,249 @@ from django.core.cache import cache
 
 from .models import (
     Scheme, Subject, AcademicResource,
-    ResourceLike, ACADEMIC_CATEGORIES, DEPARTMENT_CHOICES
+    ResourceLike, ACADEMIC_CATEGORIES, DEPARTMENT_CHOICES, SEMESTER_CHOICES
 )
 from .serializers import AcademicResourceSerializer, AcademicResourceAdminSerializer
 from accounts.permissions import IsAcademicsTeamOrReadOnly
+
+
+@api_view(['GET'])
+@permission_classes([])
+def academics_batch_data(request):
+    """
+    Production-optimized endpoint that returns all academics data in one request
+    with advanced caching and query optimization for Supabase PostgreSQL
+    """
+    from django.core.cache import cache
+    from django.db import connection
+    import hashlib
+    
+    # Get filter parameters
+    scheme_id = request.GET.get('scheme')
+    semester = request.GET.get('semester')
+    department = request.GET.get('department')
+    category = request.GET.get('category')
+    search = request.GET.get('search')
+    
+    # Check if user is admin (optimized query)
+    is_admin = False
+    if request.user.is_authenticated:
+        # Use cached admin status to avoid repeated group queries
+        admin_cache_key = f"user_admin_status_{request.user.id}"
+        is_admin = cache.get(admin_cache_key)
+        if is_admin is None:
+            is_admin = (request.user.is_superuser or 
+                       request.user.groups.filter(name='academics_team').exists())
+            cache.set(admin_cache_key, is_admin, 300)  # Cache for 5 minutes
+    
+    # Cache key for static data (schemes, categories, departments, semesters)
+    static_cache_key = "academics_static_data_v3"
+    static_data = cache.get(static_cache_key)
+    
+    if not static_data:
+        # Optimized query for schemes with minimal fields
+        schemes = Scheme.objects.filter(is_active=True).only('id', 'name', 'year').order_by('name')
+        schemes_data = [
+            {
+                'id': scheme.id,
+                'name': scheme.name,
+                'year': scheme.year,
+                'is_active': True,  # We already filtered by is_active=True
+            } 
+            for scheme in schemes
+        ]
+        
+        # Static data that never changes
+        categories_data = [{'value': cat[0], 'label': cat[1]} for cat in ACADEMIC_CATEGORIES]
+        departments_data = [{'value': dept[0], 'label': dept[1]} for dept in DEPARTMENT_CHOICES]
+        semesters_data = [{'value': sem[0], 'label': sem[1]} for sem in SEMESTER_CHOICES]
+        
+        static_data = {
+            'schemes': schemes_data,
+            'categories': categories_data,
+            'departments': departments_data,
+            'semesters': semesters_data,
+        }
+        
+        # Cache static data for 24 hours (rarely changes)
+        cache.set(static_cache_key, static_data, 86400)
+    
+    # Create cache key for dynamic data based on filters
+    filter_params = {
+        'scheme': scheme_id,
+        'semester': semester,
+        'department': department,
+        'category': category,
+        'search': search,
+        'is_admin': is_admin
+    }
+    
+    # Generate cache key from filter parameters
+    filter_str = '|'.join(f"{k}:{v}" for k, v in sorted(filter_params.items()) if v)
+    cache_key_hash = hashlib.md5(filter_str.encode()).hexdigest()
+    dynamic_cache_key = f"academics_dynamic_data_{cache_key_hash}"
+    
+    # Try to get cached dynamic data
+    dynamic_data = cache.get(dynamic_cache_key)
+    
+    if not dynamic_data:
+        # Build optimized subjects query
+        subjects_query = Subject.objects.select_related('scheme').filter(is_active=True)
+        
+        # Apply filters to subjects with optimized queries
+        if scheme_id:
+            subjects_query = subjects_query.filter(scheme_id=scheme_id)
+        if semester:
+            try:
+                semester_int = int(semester)
+                subjects_query = subjects_query.filter(semester=semester_int)
+            except (ValueError, TypeError):
+                pass
+        if department and department in [code for code, _ in DEPARTMENT_CHOICES]:
+            subjects_query = subjects_query.filter(department=department)
+        
+        # Use only() to fetch only required fields for better performance
+        subjects = subjects_query.only(
+            'id', 'name', 'code', 'semester', 'department', 
+            'scheme__id', 'scheme__name', 'scheme__year'
+        ).order_by('name')
+        
+        subjects_data = [
+            {
+                'id': subject.id,
+                'name': subject.name,
+                'code': subject.code,
+                'semester': subject.semester,
+                'department': subject.department,
+                'scheme_id': subject.scheme.id,
+                'scheme_name': subject.scheme.name,
+            } 
+            for subject in subjects
+        ]
+        
+        # Build highly optimized resources query with all joins
+        resources_query = AcademicResource.objects.select_related(
+            'subject',
+            'subject__scheme',
+            'uploaded_by'
+        ).prefetch_related('likes')
+        
+        # Apply approval filter first (most selective)
+        if is_admin:
+            is_approved = request.GET.get('is_approved')
+            if is_approved is not None:
+                if is_approved.lower() == 'true':
+                    resources_query = resources_query.filter(is_approved=True)
+                elif is_approved.lower() == 'false':
+                    resources_query = resources_query.filter(is_approved=False)
+        else:
+            # Public users only see approved resources (uses partial index)
+            resources_query = resources_query.filter(is_approved=True)
+        
+        # Apply other filters in order of selectivity
+        if category:
+            resources_query = resources_query.filter(category=category)
+        if scheme_id:
+            resources_query = resources_query.filter(subject__scheme_id=scheme_id)
+        if semester:
+            try:
+                semester_int = int(semester)
+                resources_query = resources_query.filter(subject__semester=semester_int)
+            except (ValueError, TypeError):
+                pass
+        if department and department in [code for code, _ in DEPARTMENT_CHOICES]:
+            resources_query = resources_query.filter(subject__department=department)
+        
+        # Apply search last (least selective, but uses full-text index in PostgreSQL)
+        if search:
+            if connection.vendor == 'postgresql':
+                # Use PostgreSQL full-text search for better performance
+                resources_query = resources_query.extra(
+                    where=["to_tsvector('english', title || ' ' || COALESCE(description, '')) @@ plainto_tsquery('english', %s)"],
+                    params=[search]
+                )
+            else:
+                # Fallback for SQLite
+                resources_query = resources_query.filter(
+                    Q(title__icontains=search) |
+                    Q(description__icontains=search) |
+                    Q(subject__name__icontains=search) |
+                    Q(subject__code__icontains=search)
+                )
+        
+        # Order by created_at (uses index)
+        resources_query = resources_query.order_by('-created_at')
+        
+        # Limit to prevent excessive memory usage
+        max_resources = 1000 if is_admin else 500
+        resources = resources_query[:max_resources]
+        
+        # Get client IP for like status (optimized)
+        client_ip = get_client_ip(request)
+        
+        # Build resources data with optimized like checking
+        resources_data = []
+        resource_ids = [r.id for r in resources]
+        
+        # Batch check likes for all resources at once
+        if resource_ids:
+            liked_resources = set(
+                ResourceLike.objects.filter(
+                    resource_id__in=resource_ids, 
+                    ip_address=client_ip
+                ).values_list('resource_id', flat=True)
+            )
+        else:
+            liked_resources = set()
+        
+        for resource in resources:
+            resources_data.append({
+                'id': resource.id,
+                'title': resource.title,
+                'description': resource.description,
+                'file': resource.file_url,
+                'file_size': resource.file_size,
+                'file_size_mb': resource.file_size_mb,
+                'module_number': resource.module_number if resource.category == 'notes' else None,
+                'category': resource.category,
+                'subject': {
+                    'id': resource.subject.id,
+                    'name': resource.subject.name,
+                    'code': resource.subject.code,
+                    'department': resource.subject.department,
+                    'semester': resource.subject.semester,
+                    'scheme': {
+                        'id': resource.subject.scheme.id,
+                        'name': resource.subject.scheme.name,
+                        'year': resource.subject.scheme.year
+                    }
+                },
+                'uploaded_by': {
+                    'id': resource.uploaded_by.id,
+                    'name': f"{resource.uploaded_by.first_name} {resource.uploaded_by.last_name}".strip() or resource.uploaded_by.username
+                },
+                'created_at': resource.created_at,
+                'like_count': resource.like_count,
+                'is_liked': resource.id in liked_resources,
+                'download_count': resource.download_count
+            })
+        
+        dynamic_data = {
+            'subjects': subjects_data,
+            'resources': {
+                'count': len(resources_data),
+                'results': resources_data
+            }
+        }
+        
+        # Cache dynamic data for 5 minutes (or longer if no search)
+        cache_timeout = 60 if search else 300
+        cache.set(dynamic_cache_key, dynamic_data, cache_timeout)
+    
+    # Combine static and dynamic data
+    response_data = {**static_data, **dynamic_data}
+    
+    return Response(response_data)
 
 
 @api_view(['GET', 'POST'])
@@ -316,7 +555,7 @@ def academic_resources_list(request):
             'subject',
             'subject__scheme',
             'uploaded_by'
-        )
+        ).prefetch_related('likes')
 
         # Get filter parameters
         category = request.GET.get('category')
@@ -359,6 +598,22 @@ def academic_resources_list(request):
                 Q(subject__code__icontains=search)
             )
 
+        # Order resources for consistent pagination
+        resources = resources.order_by('-created_at')
+        
+        # Pagination
+        from django.core.paginator import Paginator
+        page = request.GET.get('page', 1)
+        page_size = int(request.GET.get('page_size', 20))  # Default 20 items per page
+        
+        paginator = Paginator(resources, page_size)
+        try:
+            page_obj = paginator.page(page)
+            resources = page_obj.object_list
+        except:
+            resources = paginator.page(1).object_list
+            page_obj = paginator.page(1)
+
         resources_data = []
         for resource in resources:
             resources_data.append({
@@ -393,7 +648,11 @@ def academic_resources_list(request):
             })
 
         return Response({
-            'count': len(resources_data),
+            'count': paginator.count,
+            'total_pages': paginator.num_pages,
+            'current_page': page_obj.number,
+            'has_next': page_obj.has_next(),
+            'has_previous': page_obj.has_previous(),
             'results': resources_data
         })
 

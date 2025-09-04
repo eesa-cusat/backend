@@ -3,7 +3,10 @@ from . import views
 from . import admin_views
 
 urlpatterns = [
-    # Scheme endpoints
+    # Batch data endpoint for optimized loading
+    path('batch-data/', views.academics_batch_data, name='academics_batch_data'),
+    
+    # Schemes
     path('schemes/', views.schemes_list, name='schemes_list'),
     path('schemes/<int:pk>/', views.scheme_detail, name='scheme_detail'),
     

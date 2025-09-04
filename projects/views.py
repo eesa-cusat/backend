@@ -1,13 +1,67 @@
 from rest_framework import status, permissions, viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Prefetch
+from django.core.cache import cache
+from performance_optimizations import cache_response, smart_pagination
 from accounts.permissions import IsOwnerOrReadOnly, IsAcademicsTeamOrReadOnly
-from .models import Project, ProjectImage, ProjectVideo
+from .models import Project, ProjectImage, ProjectVideo, TeamMember
 from .serializers import (
     ProjectSerializer, ProjectCreateSerializer, ProjectUpdateSerializer, ProjectListSerializer,
     ProjectImageSerializer, ProjectVideoSerializer
 )
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+@cache_response(timeout=900, key_prefix='projects_batch')  # Cache for 15 minutes
+def projects_batch_data(request):
+    """Optimized batch endpoint for projects page - loads everything at once"""
+    # Get filter parameters
+    category = request.GET.get('category')
+    search = request.GET.get('search')
+    
+    # Base queryset with optimizations
+    queryset = Project.objects.select_related('created_by').prefetch_related(
+        Prefetch('team_members', queryset=TeamMember.objects.only('name', 'project_id')),
+        Prefetch('images', queryset=ProjectImage.objects.filter(is_featured=True).only('image', 'project_id')),
+        'videos'
+    ).filter(is_published=True).only(
+        'id', 'title', 'description', 'category', 'created_at', 'is_featured',
+        'demo_url', 'github_url', 'created_by__username', 'created_by__first_name',
+        'created_by__last_name', 'student_batch'
+    )
+    
+    # Apply filters
+    if category and category != 'All Categories':
+        queryset = queryset.filter(category=category)
+    
+    if search:
+        queryset = queryset.filter(
+            Q(title__icontains=search) |
+            Q(description__icontains=search) |
+            Q(created_by__first_name__icontains=search) |
+            Q(created_by__last_name__icontains=search) |
+            Q(team_members__name__icontains=search)
+        ).distinct()
+    
+    projects = queryset.order_by('-is_featured', '-created_at')
+    
+    # Get all metadata in single queries
+    categories = dict(Project.CATEGORY_CHOICES)
+    featured_projects = projects.filter(is_featured=True)[:4]
+    recent_projects = projects[:12]
+    
+    return Response({
+        'projects': ProjectListSerializer(recent_projects, many=True).data,
+        'featured_projects': ProjectListSerializer(featured_projects, many=True).data,
+        'categories': categories,
+        'total_count': projects.count(),
+        'filters': {
+            'category': category or 'All Categories',
+            'search': search or ''
+        }
+    })
 
 
 @api_view(['GET'])
@@ -22,7 +76,7 @@ def projects_list(request):
     has_demo = request.GET.get('has_demo')
     has_github = request.GET.get('has_github')
     
-    queryset = Project.objects.all()
+    queryset = Project.objects.select_related('created_by').prefetch_related('team_members', 'images')
     
     # Apply filters
     if category and category != 'All Categories':
@@ -58,9 +112,7 @@ def projects_list(request):
             Q(team_members__name__icontains=search)
         ).distinct()
     
-    projects = queryset.order_by('-created_at').select_related('created_by').prefetch_related(
-        'team_members', 'images', 'videos'
-    )
+    projects = queryset.order_by('-created_at')
     
     # Get available creators for filtering
     available_creators = Project.objects.select_related('created_by').values(
@@ -162,13 +214,19 @@ def my_projects(request):
 
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
+@cache_response(timeout=1800, key_prefix='featured_projects')  # Cache for 30 minutes
 def featured_projects(request):
     """Get featured projects for homepage"""
     # Get featured projects that are published
     projects = Project.objects.filter(
         is_featured=True,
         is_published=True
-    ).order_by('-created_at')[:6].select_related('created_by')
+    ).select_related('created_by').prefetch_related(
+        Prefetch('images', queryset=ProjectImage.objects.filter(is_featured=True))
+    ).only(
+        'id', 'title', 'description', 'category', 'created_at',
+        'created_by__username', 'created_by__first_name', 'created_by__last_name'
+    ).order_by('-created_at')[:6]
     
     return Response({
         'featured_projects': ProjectListSerializer(projects, many=True).data

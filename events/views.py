@@ -1,9 +1,11 @@
 from rest_framework import generics, permissions, status, viewsets
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Prefetch
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.core.cache import cache
+from performance_optimizations import cache_response, smart_pagination
 from .models import Event, EventRegistration, EventSpeaker, EventSchedule, EventFeedback
 from .serializers import (
     EventSerializer, EventListSerializer, EventRegistrationSerializer,
@@ -26,8 +28,12 @@ class EventViewSet(viewsets.ModelViewSet):
         return EventSerializer
     
     def get_queryset(self):
-        """Filter events based on user permissions and query params"""
-        queryset = Event.objects.all()
+        """Filter events based on user permissions and query params with optimizations"""
+        queryset = Event.objects.select_related('created_by').prefetch_related(
+            Prefetch('registrations', queryset=EventRegistration.objects.only('id', 'email')),
+            Prefetch('speakers', queryset=EventSpeaker.objects.only('id', 'name', 'designation')),
+            'schedule'
+        )
         
         # Public users can only see published and active events
         if not self.request.user.is_authenticated:
@@ -269,15 +275,18 @@ class EventFeedbackViewSet(viewsets.ModelViewSet):
         return queryset.none()
 
 
-# Additional utility views
+# Additional utility views with caching
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
+@cache_response(timeout=600, key_prefix='upcoming_events')  # Cache for 10 minutes
 def upcoming_events(request):
     """Get upcoming events for display"""
     events = Event.objects.filter(
         status='published',
         is_active=True,
         start_date__gt=timezone.now()
+    ).select_related('created_by').only(
+        'id', 'title', 'start_date', 'end_date', 'event_type', 'is_featured', 'banner_image'
     ).order_by('start_date')[:5]
     
     serializer = EventListSerializer(events, many=True)
@@ -286,12 +295,15 @@ def upcoming_events(request):
 
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
+@cache_response(timeout=3600, key_prefix='featured_events')  # Cache for 1 hour
 def featured_events(request):
     """Get featured events"""
     events = Event.objects.filter(
         status='published',
         is_active=True,
         is_featured=True
+    ).select_related('created_by').only(
+        'id', 'title', 'start_date', 'end_date', 'event_type', 'banner_image', 'description'
     ).order_by('-start_date')[:3]
     
     serializer = EventListSerializer(events, many=True)
@@ -300,22 +312,25 @@ def featured_events(request):
 
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
+@cache_response(timeout=1800, key_prefix='event_stats')  # Cache for 30 minutes
 def event_stats(request):
     """Get event statistics"""
-    total_events = Event.objects.count()
-    published_events = Event.objects.filter(status='published').count()
-    upcoming_events = Event.objects.filter(
-        status='published',
-        start_date__gt=timezone.now()
-    ).count()
-    total_registrations = EventRegistration.objects.count()
+    cache_key = 'event_statistics'
+    stats = cache.get(cache_key)
     
-    return Response({
-        'total_events': total_events,
-        'published_events': published_events,
-        'upcoming_events': upcoming_events,
-        'total_registrations': total_registrations
-    })
+    if not stats:
+        stats = {
+            'total_events': Event.objects.count(),
+            'published_events': Event.objects.filter(status='published').count(),
+            'upcoming_events': Event.objects.filter(
+                status='published',
+                start_date__gt=timezone.now()
+            ).count(),
+            'total_registrations': EventRegistration.objects.count()
+        }
+        cache.set(cache_key, stats, 1800)  # Cache for 30 minutes
+    
+    return Response(stats)
 
 
 @api_view(['POST'])

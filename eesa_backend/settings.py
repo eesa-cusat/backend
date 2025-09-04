@@ -60,6 +60,7 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    'performance_optimizations.PerformanceMiddleware',  # Performance tracking
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -88,7 +89,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'eesa_backend.wsgi.application'
 
-# Database configuration
+# Database configuration with optimizations for production
 if DEBUG:
     DATABASES = {
         'default': {
@@ -97,7 +98,7 @@ if DEBUG:
         }
     }
 else:
-    # Production - PostgreSQL with fallback to SQLite
+    # Production - PostgreSQL with connection pooling and optimizations for Supabase
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
@@ -106,6 +107,13 @@ else:
             'PASSWORD': os.environ.get('DB_PASSWORD'),
             'HOST': os.environ.get('DB_HOST'),
             'PORT': os.environ.get('DB_PORT', '5432'),
+            'OPTIONS': {
+                'sslmode': 'require',  # Required for Supabase
+                'connect_timeout': 10,
+                'options': '-c default_transaction_isolation=read_committed'
+            },
+            'CONN_MAX_AGE': 300,  # Keep connections alive for 5 minutes
+            'CONN_HEALTH_CHECKS': True,  # Check connection health
         }
     } if all([os.environ.get('DB_PASSWORD'), os.environ.get('DB_HOST')]) else {
         'default': {
@@ -207,6 +215,20 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+    ] if not DEBUG else [
+        'rest_framework.renderers.JSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer',
+    ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle'
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',
+        'user': '1000/hour'
+    }
 }
 
 # CORS configuration - Updated for cross-origin requests
@@ -276,17 +298,61 @@ ADMIN_SITE_HEADER = "EESA Backend Administration"
 ADMIN_SITE_TITLE = "EESA Admin Portal"
 ADMIN_INDEX_TITLE = "Welcome to EESA Backend Administration"
 
-# Cache configuration
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'eesa-cache',
+# Cache configuration - Production-optimized
+if DEBUG:
+    # Development: Simple in-memory cache
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'eesa-dev-cache',
+            'OPTIONS': {
+                'MAX_ENTRIES': 1000,
+                'CULL_FREQUENCY': 3,
+            }
+        }
     }
-}
+else:
+    # Production: Use Redis if available, fallback to database cache
+    redis_url = os.environ.get('REDIS_URL')
+    if redis_url:
+        CACHES = {
+            'default': {
+                'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+                'LOCATION': redis_url,
+                'OPTIONS': {
+                    'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+                    'CONNECTION_POOL_KWARGS': {
+                        'max_connections': 20,
+                        'retry_on_timeout': True,
+                    },
+                    'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
+                    'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
+                },
+                'KEY_PREFIX': 'eesa_prod',
+                'TIMEOUT': 300,  # 5 minutes default
+            }
+        }
+    else:
+        # Fallback to database cache for Render/Supabase
+        CACHES = {
+            'default': {
+                'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+                'LOCATION': 'eesa_cache_table',
+                'OPTIONS': {
+                    'MAX_ENTRIES': 5000,
+                    'CULL_FREQUENCY': 3,
+                },
+                'TIMEOUT': 300,
+            }
+        }
 
 # Cache settings
-CACHE_TTL = 60 * 60 * 24 * 365  # 1 year
+CACHE_TTL = 60 * 60 * 24  # 24 hours for static data
 CACHE_KEY_PREFIX = 'eesa_'
+
+# Session cache (use same cache backend)
+SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
+SESSION_CACHE_ALIAS = 'default'
 
 # Production security settings
 if not DEBUG:

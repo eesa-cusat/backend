@@ -8,6 +8,9 @@ router.register(r'images', views.ProjectImageViewSet)
 router.register(r'videos', views.ProjectVideoViewSet)
 
 urlpatterns = [
+    # Optimized batch endpoint
+    path('batch-data/', views.projects_batch_data, name='projects_batch_data'),
+    
     # Function-based views
     path('', views.projects_list, name='projects_list'),
     path('<int:pk>/', views.project_detail, name='project_detail'),
