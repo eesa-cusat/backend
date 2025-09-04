@@ -75,6 +75,7 @@ MIDDLEWARE = [
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'academics.middleware.CSRFExemptAPIMiddleware',  # Custom CSRF handling for API endpoints
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -226,7 +227,7 @@ REST_FRAMEWORK = {
 if DEBUG:
     # Development CORS settings
     dev_cors = os.environ.get('DEV_CORS_ALLOWED_ORIGINS', 
-                             'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:5173,http://127.0.0.1:5173')
+                             'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173')
     CORS_ALLOWED_ORIGINS = [origin.strip() for origin in dev_cors.split(',') if origin.strip()]
 else:
     # Production CORS settings
@@ -260,7 +261,7 @@ CORS_ALLOW_HEADERS = [
 if DEBUG:
     # Development CSRF settings - allow frontend origins
     dev_csrf = os.environ.get('DEV_CSRF_TRUSTED_ORIGINS', 
-                             'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:5173,http://127.0.0.1:5173')
+                             'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173')
     CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in dev_csrf.split(',') if origin.strip()]
 else:
     # Production CSRF settings

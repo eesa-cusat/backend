@@ -420,34 +420,53 @@ def toggle_resource_like(request, pk):
                     'error': 'Unable to determine client IP'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Check if already liked by this IP
-            like_obj, created = ResourceLike.objects.get_or_create(
-                resource=resource,
-                ip_address=ip,
-                defaults={}
-            )
-            
-            if created:
-                # New like created
-                resource.like_count = F('like_count') + 1
-                liked = True
-                message = 'Resource liked successfully'
-            else:
-                # Like already exists, remove it (unlike)
-                like_obj.delete()
-                resource.like_count = F('like_count') - 1
-                liked = False
-                message = 'Resource unliked successfully'
-            
-            resource.save()
-            resource.refresh_from_db()
-            
-            return Response({
-                'liked': liked,
-                'like_count': resource.like_count,
-                'message': message,
-                'resource_id': resource.id
-            })
+            # Check if already liked by this IP using get_or_create for atomicity
+            try:
+                like_obj, created = ResourceLike.objects.get_or_create(
+                    resource=resource,
+                    ip_address=ip,
+                    defaults={}
+                )
+                
+                if created:
+                    # New like created
+                    resource.like_count = F('like_count') + 1
+                    liked = True
+                    message = 'Resource liked successfully'
+                else:
+                    # Like already exists, remove it (unlike)
+                    like_obj.delete()
+                    resource.like_count = F('like_count') - 1
+                    liked = False
+                    message = 'Resource unliked successfully'
+                
+                resource.save(update_fields=['like_count'])
+                resource.refresh_from_db()
+                
+                # Return success response
+                response_data = {
+                    'liked': liked,
+                    'like_count': resource.like_count,
+                    'message': message,
+                    'resource_id': resource.id
+                }
+                
+                response = Response(response_data, status=status.HTTP_200_OK)
+                
+                # Add CORS headers explicitly for production
+                if not settings.DEBUG:
+                    response['Access-Control-Allow-Origin'] = request.META.get('HTTP_ORIGIN', '*')
+                    response['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+                    response['Access-Control-Allow-Headers'] = 'Content-Type, X-CSRFToken, X-Requested-With'
+                    response['Access-Control-Allow-Credentials'] = 'true'
+                
+                return response
+                
+            except Exception as db_error:
+                return Response({
+                    'error': 'Database error occurred',
+                    'details': str(db_error) if settings.DEBUG else 'Please try again'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
     except AcademicResource.DoesNotExist:
         return Response({
@@ -564,27 +583,49 @@ def download_academic_resource(request, pk):
             resource.download_count = F('download_count') + 1
             resource.save(update_fields=['download_count'])
             
-            # Get the file path
-            file_path = resource.file.path
-            
-            if not os.path.exists(file_path):
-                return Response({'error': 'File not found on disk'}, status=status.HTTP_404_NOT_FOUND)
-            
-            # Get proper filename
-            filename = os.path.basename(file_path)
-            if not filename:
-                filename = f"{resource.title}.pdf"  # fallback filename
-            
-            # Open and serve the file
-            with open(file_path, 'rb') as f:
-                response = HttpResponse(f.read(), content_type='application/octet-stream')
+            # Handle both local development and production (Cloudinary)
+            if settings.DEBUG:
+                # Development: Local file system
+                try:
+                    file_path = resource.file.path
+                    
+                    if not os.path.exists(file_path):
+                        return Response({'error': 'File not found on disk'}, status=status.HTTP_404_NOT_FOUND)
+                    
+                    # Get proper filename
+                    filename = os.path.basename(file_path)
+                    if not filename:
+                        filename = f"{resource.title}.pdf"  # fallback filename
+                    
+                    # Open and serve the file
+                    with open(file_path, 'rb') as f:
+                        response = HttpResponse(f.read(), content_type='application/octet-stream')
+                        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+                        response['Content-Length'] = os.path.getsize(file_path)
+                        return response
+                        
+                except (AttributeError, OSError) as e:
+                    # Fallback to URL redirect if local file access fails
+                    return HttpResponse(status=302, headers={'Location': resource.file.url})
+            else:
+                # Production: Cloudinary storage - redirect to file URL
+                file_url = resource.file.url
+                
+                # Extract filename from URL or use title
+                try:
+                    filename = os.path.basename(file_url.split('?')[0])  # Remove query params
+                    if not filename or '.' not in filename:
+                        filename = f"{resource.title}.pdf"
+                except:
+                    filename = f"{resource.title}.pdf"
+                
+                # Return redirect response to Cloudinary URL
+                response = HttpResponse(status=302)
+                response['Location'] = file_url
                 response['Content-Disposition'] = f'attachment; filename="{filename}"'
-                response['Content-Length'] = os.path.getsize(file_path)
                 return response
                 
     except AcademicResource.DoesNotExist:
         return Response({'error': 'Resource not found'}, status=status.HTTP_404_NOT_FOUND)
-    except FileNotFoundError:
-        return Response({'error': 'File not found on disk'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({'error': f'Download failed: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
