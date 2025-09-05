@@ -187,14 +187,14 @@ else:
         },
         "staticfiles": {
             "BACKEND": "cloudinary_storage.storage.StaticHashedCloudinaryStorage",
-            "OPTIONS": {
-                "folder": "eesa_backend/static",
-            }
         },
     }
     STATIC_URL = '/static/'
     STATIC_ROOT = BASE_DIR / 'staticfiles'
     MEDIA_URL = '/media/'
+    
+    # Fallback for collectstatic issues
+    STATICFILES_STORAGE = 'cloudinary_storage.storage.StaticHashedCloudinaryStorage'
 
 # Cloudinary setup for production
 if not DEBUG and all(CLOUDINARY_CONFIG.values()):
