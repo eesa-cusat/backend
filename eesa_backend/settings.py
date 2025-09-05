@@ -175,15 +175,6 @@ else:
     STORAGES = {
         "default": {
             "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
-            "OPTIONS": {
-                "folder": "eesa_backend/media",
-                "resource_type": "auto",
-                "allowed_formats": ["jpg", "png", "gif", "mp4", "pdf", "doc", "docx"],
-                "transformation": [
-                    {"quality": "auto:good"},
-                    {"fetch_format": "auto"}
-                ]
-            }
         },
         "staticfiles": {
             "BACKEND": "cloudinary_storage.storage.StaticHashedCloudinaryStorage",
@@ -200,6 +191,15 @@ else:
 if not DEBUG and all(CLOUDINARY_CONFIG.values()):
     import cloudinary
     cloudinary.config(**CLOUDINARY_CONFIG)
+    
+    # Configure default folder for media files
+    CLOUDINARY_STORAGE = {
+        'CLOUD_NAME': CLOUDINARY_CONFIG['cloud_name'],
+        'API_KEY': CLOUDINARY_CONFIG['api_key'],
+        'API_SECRET': CLOUDINARY_CONFIG['api_secret'],
+        'MEDIA_TAG': 'eesa_backend_media',
+        'STATIC_TAG': 'eesa_backend_static',
+    }
 
 # File upload settings
 FILE_UPLOAD_MAX_MEMORY_SIZE = 15 * 1024 * 1024  # 15MB

@@ -198,46 +198,54 @@ class AcademicResource(models.Model):
     def file_url(self):
         """Get the file URL based on environment"""
         if self.file:
-            # In development, use local file URL
-            if settings.DEBUG:
-                return self.file.url if hasattr(self.file, 'url') else str(self.file)
+            try:
+                # In development, use local file URL
+                if settings.DEBUG:
+                    return self.file.url if hasattr(self.file, 'url') else str(self.file)
 
-            # In production, normalize Cloudinary URLs for PDFs
-            # Prefer the storage-provided URL when available
-            url = self.file.url if hasattr(self.file, 'url') and self.file.url else str(self.file)
+                # In production, normalize Cloudinary URLs for PDFs
+                # Prefer the storage-provided URL when available
+                url = self.file.url if hasattr(self.file, 'url') and self.file.url else str(self.file)
 
-            # Fix occasional missing slash bug
-            if 'https:/res.cloudinary.com' in url:
-                url = url.replace('https:/res.cloudinary.com', 'https://res.cloudinary.com')
+                # Fix occasional missing slash bug
+                if 'https:/res.cloudinary.com' in url:
+                    url = url.replace('https:/res.cloudinary.com', 'https://res.cloudinary.com')
 
-            # If not a Cloudinary URL, return as-is
-            if 'res.cloudinary.com' not in url:
+                # If not a Cloudinary URL, return as-is
+                if 'res.cloudinary.com' not in url:
+                    return url
+
+                # Force delivery via image/upload for PDFs, not raw/upload
+                url = url.replace('/raw/upload/', '/image/upload/')
+
+                # Ensure .pdf extension is present at the end of the public_id
+                # Preserve query string if any
+                base, sep, query = url.partition('?')
+                if not base.lower().endswith('.pdf'):
+                    base += '.pdf'
+                url = base + (sep + query if sep else '')
+
                 return url
-
-            # Force delivery via image/upload for PDFs, not raw/upload
-            url = url.replace('/raw/upload/', '/image/upload/')
-
-            # Ensure .pdf extension is present at the end of the public_id
-            # Preserve query string if any
-            base, sep, query = url.partition('?')
-            if not base.lower().endswith('.pdf'):
-                base += '.pdf'
-            url = base + (sep + query if sep else '')
-
-            return url
+            except Exception as e:
+                # Fallback to file name if URL generation fails
+                return f"File: {self.file.name}" if self.file.name else "File unavailable"
         else:
             return None
 
     def get_download_url(self):
         """Get a download URL for the file with proper headers"""
         if self.file:
-            base_url = self.file_url
-            if base_url:
-                # Add download parameter to force download
-                if '?' in base_url:
-                    return f"{base_url}&fl_attachment"
-                else:
-                    return f"{base_url}?fl_attachment"
+            try:
+                base_url = self.file_url
+                if base_url and base_url.startswith('http'):
+                    # Add download parameter to force download
+                    if '?' in base_url:
+                        return f"{base_url}&fl_attachment"
+                    else:
+                        return f"{base_url}?fl_attachment"
+                return base_url
+            except Exception:
+                return None
         return None
 
 class ResourceLike(models.Model):

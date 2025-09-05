@@ -43,7 +43,7 @@ class AcademicResourceAdmin(admin.ModelAdmin):
     list_editable = ['is_approved']
     readonly_fields = [
         'uploaded_by', 'approved_by', 'file_size', 'download_count',
-        'like_count', 'created_at', 'file_link'
+        'like_count', 'created_at'
     ]
     
     fieldsets = (
@@ -51,7 +51,7 @@ class AcademicResourceAdmin(admin.ModelAdmin):
             'fields': ('title', 'description', 'category', 'subject')
         }),
         ('File Information', {
-            'fields': ('file', 'file_size', 'file_link')
+            'fields': ('file', 'file_size')
         }),
         ('Resource Details', {
             'fields': ('module_number',)
@@ -71,14 +71,23 @@ class AcademicResourceAdmin(admin.ModelAdmin):
     def file_link(self, obj):
         """Display clickable link to the file with Cloudinary URL"""
         if obj.file:
-            file_url = obj.file_url
-            download_url = obj.get_download_url()
-            return format_html(
-                '<a href="{}" target="_blank">View File</a> '
-                '(<a href="{}" download>Download</a>)<br>'
-                '<small style="color: #666;">{}</small>',
-                file_url, download_url, file_url
-            )
+            try:
+                file_url = obj.file_url
+                download_url = obj.get_download_url()
+                
+                if file_url and file_url.startswith('http'):
+                    return format_html(
+                        '<a href="{}" target="_blank">View File</a> '
+                        '(<a href="{}" download>Download</a>)<br>'
+                        '<small style="color: #666;">{}</small>',
+                        file_url, download_url or file_url, file_url
+                    )
+                elif file_url:
+                    return format_html('<small style="color: #666;">{}</small>', file_url)
+                else:
+                    return format_html('<small style="color: #999;">File available but URL temporarily unavailable</small>')
+            except Exception as e:
+                return format_html('<small style="color: #f00;">Error loading file URL: {}</small>', str(e)[:50])
         return "No file uploaded"
     file_link.short_description = "File"
 
