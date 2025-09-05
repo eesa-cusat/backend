@@ -125,3 +125,27 @@ class IsAuthenticatedUserOrReadOnly(BasePermission):
         
         # Write permissions require authentication
         return request.user.is_authenticated
+
+
+class IsGalleryManager(BasePermission):
+    """
+    Permission for gallery management
+    Allows Admins, Technical Head, and Events Team to manage gallery
+    """
+    def has_permission(self, request, view):
+        # Read permissions are allowed to anyone
+        if request.method in SAFE_METHODS:
+            return True
+        
+        # Write permissions require authentication
+        if not request.user.is_authenticated:
+            return False
+        
+        # Superusers have all permissions
+        if request.user.is_superuser:
+            return True
+        
+        # Check if user is Admin, Technical Head, or Events Team
+        return request.user.groups.filter(
+            name__in=['Admin', 'Technical Head', 'events_team']
+        ).exists()

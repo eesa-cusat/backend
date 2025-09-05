@@ -66,6 +66,12 @@ class Company(models.Model):
     
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['name']),
+            models.Index(fields=['industry']),
+            models.Index(fields=['is_active', 'is_verified']),
+            models.Index(fields=['created_at']),
+        ]
         
     def __str__(self):
         return self.name
@@ -126,6 +132,13 @@ class PlacementDrive(models.Model):
     
     class Meta:
         ordering = ['-drive_date']
+        indexes = [
+            models.Index(fields=['company', 'job_type']),
+            models.Index(fields=['drive_date']),
+            models.Index(fields=['registration_start', 'registration_end']),
+            models.Index(fields=['is_active', 'is_featured']),
+            models.Index(fields=['min_cgpa']),
+        ]
         
     def __str__(self):
         return f"{self.company.name} - {self.title}"
@@ -196,6 +209,12 @@ class PlacementApplication(models.Model):
     class Meta:
         unique_together = ['drive', 'student']
         ordering = ['-applied_at']
+        indexes = [
+            models.Index(fields=['drive', 'status']),
+            models.Index(fields=['student', 'status']),
+            models.Index(fields=['applied_at']),
+            models.Index(fields=['result_status']),
+        ]
         
     def __str__(self):
         return f"{self.student.get_full_name()} - {self.drive.title}"
@@ -234,6 +253,9 @@ class StudentCoordinator(models.Model):
         ordering = ['display_order', 'user__first_name']
         verbose_name = "Student Coordinator"
         verbose_name_plural = "Student Coordinators"
+        indexes = [
+            models.Index(fields=['is_active', 'display_order']),
+        ]
     
     def __str__(self):
         return f"{self.user.get_full_name()} - {self.designation}"
@@ -263,6 +285,10 @@ class PlacementStatistics(models.Model):
     class Meta:
         unique_together = ['academic_year', 'batch_year', 'branch']
         ordering = ['-batch_year', 'branch']
+        indexes = [
+            models.Index(fields=['academic_year', 'batch_year']),
+            models.Index(fields=['branch']),
+        ]
         
     def __str__(self):
         return f"{self.branch} - {self.batch_year} ({self.academic_year})"
@@ -331,6 +357,13 @@ class PlacedStudent(models.Model):
     class Meta:
         ordering = ['-offer_date', '-package_lpa']
         unique_together = ['student_email', 'company', 'offer_date']
+        indexes = [
+            models.Index(fields=['company', 'batch_year']),
+            models.Index(fields=['offer_date']),
+            models.Index(fields=['package_lpa']),
+            models.Index(fields=['job_type', 'category']),
+            models.Index(fields=['is_verified', 'is_active']),
+        ]
         
     def __str__(self):
         return f"{self.student_name} - {self.company.name} ({self.package_lpa} LPA)"
@@ -357,6 +390,10 @@ class PlacementBrochure(models.Model):
     class Meta:
         ordering = ['-created_at']
         unique_together = ['academic_year']
+        indexes = [
+            models.Index(fields=['academic_year']),
+            models.Index(fields=['is_current']),
+        ]
         
     def __str__(self):
         return f"EEE Department - {self.title} ({self.academic_year})"

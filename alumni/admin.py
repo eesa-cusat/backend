@@ -1,44 +1,80 @@
 from django.contrib import admin
 from django.http import HttpResponse
-from django.urls import path
-from django.utils.html import format_html
 from django.db.models import Count
-from django.shortcuts import render, redirect
-from django.contrib import messages
 import csv
-import io
-from .models import Alumni
+from .models import Alumni, AlumniBatch
+
+
+@admin.register(AlumniBatch)
+class AlumniBatchAdmin(admin.ModelAdmin):
+    list_display = [
+        'batch_year_range', 'batch_name', 'total_alumni', 'verified_alumni', 
+        'has_group_photo', 'created_at'
+    ]
+    list_filter = ['created_at']
+    search_fields = ['batch_year_range', 'batch_name', 'batch_description']
+    readonly_fields = ['total_alumni', 'verified_alumni', 'employment_stats', 'created_at', 'updated_at']
+    ordering = ['-batch_year_range']
+    
+    fieldsets = (
+        ('Batch Information', {
+            'fields': ('batch_year_range', 'batch_name', 'batch_description')
+        }),
+        ('Batch Media', {
+            'fields': ('batch_group_photo',),
+            'description': 'Upload official graduation or group photos'
+        }),
+        ('Statistics', {
+            'fields': ('total_alumni', 'verified_alumni', 'employment_stats'),
+            'classes': ('collapse',),
+            'description': 'Automatically computed from Alumni data'
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        })
+    )
+    
+    def has_group_photo(self, obj):
+        return bool(obj.batch_group_photo)
+    has_group_photo.boolean = True
+    has_group_photo.short_description = 'Has Photo'
+    
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        # Update statistics after saving
+        obj.update_statistics()
 
 
 @admin.register(Alumni)
 class AlumniAdmin(admin.ModelAdmin):
     list_display = [
-        'full_name', 'email', 'year_of_passout', 'employment_status', 
+        'id', 'full_name', 'email', 'batch', 'employment_status', 
         'current_company', 'is_verified', 'is_active', 'created_at'
     ]
     list_filter = [
-        'year_of_passout', 'employment_status', 'is_verified', 
+        'batch', 'employment_status', 'is_verified', 
         'is_active', 'willing_to_mentor', 'created_at'
     ]
     search_fields = [
-        'full_name', 'email', 'student_id', 'current_company',
-        'job_title'
+        'full_name', 'email', 'current_company',
+        'job_title', 'batch__batch_name', 'batch__batch_year_range'
     ]
     readonly_fields = [
-        'id', 'department', 'years_since_graduation', 'batch_name',
+        'id', 'years_since_graduation', 'batch_name',
         'created_at', 'updated_at'
     ]
+    ordering = ['id']
+    
     fieldsets = (
         ('Personal Information', {
             'fields': (
-                'full_name', 'email', 'phone_number', 'alternative_phone'
+                'full_name', 'email', 'phone_number'
             )
         }),
-        ('Academic Information', {
-            'fields': (
-                'student_id', 'scheme', 'year_of_joining', 'year_of_passout',
-                'department', 'specialization', 'cgpa'
-            )
+        ('Batch Information', {
+            'fields': ('batch',),
+            'description': 'Select the batch this alumni belongs to (e.g., 2019-2023, 2020-2024)'
         }),
         ('Current Status', {
             'fields': (
@@ -59,9 +95,12 @@ class AlumniAdmin(admin.ModelAdmin):
         ('Status', {
             'fields': ('is_verified', 'is_active')
         }),
+        ('Computed Fields', {
+            'fields': ('id', 'years_since_graduation', 'batch_name'),
+            'classes': ('collapse',)
+        }),
         ('Metadata', {
             'fields': (
-                'id', 'years_since_graduation', 'batch_name',
                 'created_by', 'created_at', 'updated_at'
             ),
             'classes': ('collapse',)
@@ -86,15 +125,16 @@ class AlumniAdmin(admin.ModelAdmin):
         
         writer = csv.writer(response)
         writer.writerow([
-            'Full Name', 'Email', 'Phone', 'Year of Passout',
-            'Department', 'Current Company', 'Job Title',
+            'ID', 'Full Name', 'Email', 'Phone', 'Batch Year Range',
+            'Batch Name', 'Current Company', 'Job Title',
             'Employment Status', 'LinkedIn', 'Willing to Mentor', 'Is Verified'
         ])
         
-        for alumni in queryset:
+        for alumni in queryset.select_related('batch'):
             writer.writerow([
-                alumni.full_name, alumni.email, alumni.phone_number,
-                alumni.year_of_passout, alumni.department,
+                alumni.id, alumni.full_name, alumni.email, alumni.phone_number,
+                alumni.batch.batch_year_range if alumni.batch else '',
+                alumni.batch.batch_name if alumni.batch else '',
                 alumni.current_company, alumni.job_title,
                 alumni.employment_status, alumni.linkedin_profile,
                 alumni.willing_to_mentor, alumni.is_verified
@@ -104,101 +144,13 @@ class AlumniAdmin(admin.ModelAdmin):
     export_as_csv.short_description = "Export selected alumni as CSV"
     
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related('created_by')
+        return super().get_queryset(request).select_related('created_by', 'batch')
     
-    def get_urls(self):
-        """Add custom URL for CSV upload"""
-        urls = super().get_urls()
-        custom_urls = [
-            path('upload-csv/', self.admin_site.admin_view(self.upload_csv), name='alumni_upload_csv'),
-        ]
-        return custom_urls + urls
-    
-    def changelist_view(self, request, extra_context=None):
-        """Add CSV upload button to changelist"""
-        extra_context = extra_context or {}
-        extra_context['csv_upload_url'] = 'upload-csv/'
-        return super().changelist_view(request, extra_context=extra_context)
-    
-    def upload_csv(self, request):
-        """Handle CSV upload"""
-        if request.method == 'POST' and 'csv_file' in request.FILES:
-            csv_file = request.FILES['csv_file']
-            
-            try:
-                # Read CSV file
-                decoded_file = csv_file.read().decode('utf-8')
-                io_string = io.StringIO(decoded_file)
-                reader = csv.DictReader(io_string)
-                
-                # Expected headers
-                required_headers = ['full_name', 'email', 'year_of_passout']
-                optional_headers = [
-                    'phone_number', 'student_id', 'scheme', 'year_of_joining',
-                    'specialization', 'cgpa', 'job_title', 'current_company',
-                    'current_location', 'employment_status', 'linkedin_profile'
-                ]
-                
-                # Validate headers
-                csv_headers = reader.fieldnames or []
-                missing_headers = [h for h in required_headers if h not in csv_headers]
-                if missing_headers:
-                    messages.error(request, f'Missing required headers: {", ".join(missing_headers)}')
-                    return redirect('..')
-                
-                # Process rows
-                successful_imports = 0
-                failed_imports = 0
-                error_log = []
-                
-                for row_num, row in enumerate(reader, start=1):
-                    try:
-                        # Clean and prepare data
-                        alumni_data = {
-                            'full_name': row.get('full_name', '').strip(),
-                            'email': row.get('email', '').strip(),
-                            'year_of_passout': int(row.get('year_of_passout', 0))
-                        }
-                        
-                        # Add optional fields
-                        for header in optional_headers:
-                            if header in row and row[header].strip():
-                                value = row[header].strip()
-                                if header in ['year_of_joining', 'scheme']:
-                                    alumni_data[header] = int(value) if value else None
-                                elif header == 'cgpa':
-                                    alumni_data[header] = float(value) if value else None
-                                else:
-                                    alumni_data[header] = value
-                        
-                        # Set defaults
-                        if 'scheme' not in alumni_data and 'year_of_joining' in alumni_data:
-                            alumni_data['scheme'] = alumni_data['year_of_joining']
-                        if 'year_of_joining' not in alumni_data:
-                            alumni_data['year_of_joining'] = alumni_data['year_of_passout'] - 4
-                        
-                        # Create alumni record
-                        Alumni.objects.create(created_by=request.user, **alumni_data)
-                        successful_imports += 1
-                        
-                    except Exception as e:
-                        failed_imports += 1
-                        error_log.append(f"Row {row_num}: {str(e)}")
-                
-                if successful_imports > 0:
-                    messages.success(request, f'Successfully imported {successful_imports} alumni records.')
-                if failed_imports > 0:
-                    messages.warning(request, f'{failed_imports} records failed. First few errors: {"; ".join(error_log[:3])}')
-                
-                return redirect('..')
-                
-            except Exception as e:
-                messages.error(request, f'Error processing CSV file: {str(e)}')
-                return redirect('..')
+    def save_model(self, request, obj, form, change):
+        if not change:  # Creating new object
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
         
-        # Show upload form
-        context = {
-            'title': 'Upload Alumni CSV',
-            'opts': self.model._meta,
-        }
-        return render(request, 'admin/alumni/upload_csv.html', context)
+        # Update batch statistics if batch is set
+        if obj.batch:
+            obj.batch.update_statistics()

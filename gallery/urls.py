@@ -2,14 +2,13 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
 
+# Create router and register viewsets
 router = DefaultRouter()
-router.register(r'categories', views.GalleryCategoryViewSet)
-router.register(r'images', views.GalleryImageViewSet)
-router.register(r'albums', views.GalleryAlbumViewSet)
+router.register(r'albums', views.AlbumViewSet, basename='album')
+router.register(r'photos', views.PhotoViewSet, basename='photo')
+
+app_name = 'gallery'
 
 urlpatterns = [
-    # Optimized batch endpoint
-    path('batch-data/', views.gallery_batch_data, name='gallery_batch_data'),
-    
     path('', include(router.urls)),
 ]

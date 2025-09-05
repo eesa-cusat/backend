@@ -37,6 +37,10 @@ class Scheme(models.Model):
 
     class Meta:
         ordering = ['-year']
+        indexes = [
+            models.Index(fields=['year']),
+            models.Index(fields=['is_active']),
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.year})"
@@ -151,10 +155,19 @@ class AcademicResource(models.Model):
     class Meta:
         ordering = ['-created_at']
         indexes = [
+            # Primary filtering indexes
             models.Index(fields=['category', 'subject']),
+            models.Index(fields=['subject', 'is_approved', 'is_active']),
             models.Index(fields=['uploaded_by']),
-            models.Index(fields=['is_approved']),
+            models.Index(fields=['is_approved', 'is_active']),
             models.Index(fields=['created_at']),
+            # Query optimization indexes
+            models.Index(fields=['subject', 'category', 'module_number']),
+            models.Index(fields=['category', 'is_approved']),
+            models.Index(fields=['download_count']),
+            models.Index(fields=['like_count']),
+            # Department and scheme filtering
+            models.Index(fields=['subject', 'category'], name='idx_academics_subject_category'),
         ]
 
     def __str__(self):

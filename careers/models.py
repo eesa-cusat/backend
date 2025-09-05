@@ -38,6 +38,13 @@ class JobOpportunity(models.Model):
     
     class Meta:
         ordering = ['-posted_at']
+        indexes = [
+            models.Index(fields=['job_type', 'experience_level']),
+            models.Index(fields=['posted_at']),
+            models.Index(fields=['is_active']),
+            models.Index(fields=['company']),
+            models.Index(fields=['application_deadline']),
+        ]
         
     def __str__(self):
         return f"{self.title} at {self.company}"
@@ -95,6 +102,14 @@ class InternshipOpportunity(models.Model):
     
     class Meta:
         ordering = ['-posted_at']
+        indexes = [
+            models.Index(fields=['internship_type', 'duration']),
+            models.Index(fields=['posted_at']),
+            models.Index(fields=['is_active']),
+            models.Index(fields=['company']),
+            models.Index(fields=['application_deadline']),
+            models.Index(fields=['is_remote']),
+        ]
         
     def __str__(self):
         return f"{self.title} at {self.company} ({self.duration})"
@@ -176,6 +191,14 @@ class CertificateOpportunity(models.Model):
     
     class Meta:
         ordering = ['-posted_at']
+        indexes = [
+            models.Index(fields=['certificate_type', 'provider']),
+            models.Index(fields=['posted_at']),
+            models.Index(fields=['is_active']),
+            models.Index(fields=['is_free']),
+            models.Index(fields=['university_credit']),
+            models.Index(fields=['validity_till']),
+        ]
         
     def clean(self):
         from django.core.exceptions import ValidationError

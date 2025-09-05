@@ -1,47 +1,32 @@
-from django.shortcuts import render
-from django.http import JsonResponse, HttpResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth.decorators import login_required
-from django.db.models import F, Q
-from django.db import transaction
-from django.utils import timezone
-from django.conf import settings
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework import status
-import os
-import json
-from django.core.cache import cache
-
-from .models import (
-    Scheme, Subject, AcademicResource, ResourceLike, ACADEMIC_CATEGORIES
-)
-from .rate_limiting import rate_limit_by_ip_and_resource
+from django.http import HttpResponse
+from django.utils import timezone
+from django.db.models import F, Q
+from django.db import transaction
+from django.views.decorators.csrf import csrf_exempt
+from .models import Scheme, Subject, AcademicResource, ResourceLike, ACADEMIC_CATEGORIES
 from .serializers import AcademicResourceSerializer
+import os
 
 
 @api_view(['GET'])
-@permission_classes([])
+@permission_classes([AllowAny])
 def academic_data_combined(request):
-    """Get all academic data in one optimized call"""
-    cache_key = 'academic_data_combined'
-    
-    # Try to get from cache first (5 minute cache)
-    cached_data = cache.get(cache_key)
-    if cached_data:
-        return Response(cached_data)
-    
+    """Get all academic data in one call"""
     # Schemes
     schemes = Scheme.objects.filter(is_active=True).order_by('name')
-    schemes_data = []
-    for scheme in schemes:
-        schemes_data.append({
+    schemes_data = [
+        {
             'id': scheme.id,
             'name': scheme.name,
             'year': scheme.year,
             'is_active': scheme.is_active,
-        })
+        }
+        for scheme in schemes
+    ]
     
     # Categories
     categories_data = [
@@ -53,11 +38,11 @@ def academic_data_combined(request):
         for category in ACADEMIC_CATEGORIES
     ]
     
-    # Departments - get from subjects
+    # Departments
     departments = Subject.objects.values_list('department', flat=True).distinct().order_by('department')
     departments_data = [dept for dept in departments if dept]
     
-    # Subjects grouped by scheme and semester for faster lookup
+    # Subjects grouped by scheme and semester
     subjects = Subject.objects.select_related('scheme').order_by('name')
     subjects_data = {}
     for subject in subjects:
@@ -81,18 +66,13 @@ def academic_data_combined(request):
             'scheme_name': subject.scheme.name,
         })
     
-    combined_data = {
+    return Response({
         'schemes': schemes_data,
         'categories': categories_data,
         'departments': departments_data,
         'subjects': subjects_data,
         'message': 'All academic data fetched successfully'
-    }
-    
-    # Cache for 5 minutes
-    cache.set(cache_key, combined_data, 300)
-    
-    return Response(combined_data)
+    })
 
 
 @api_view(['GET'])
@@ -394,18 +374,9 @@ def check_if_liked(resource_id, ip):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
-@csrf_exempt  # Safe for public API - uses IP-based uniqueness constraints
-@rate_limit_by_ip_and_resource(max_requests=10, window_seconds=60)  # Prevent abuse
+@csrf_exempt
 def toggle_resource_like(request, pk):
-    """
-    Toggle like status for a resource
-    
-    Security Notes:
-    - CSRF exempt because this is a public API endpoint
-    - Uses IP-based tracking to ensure one like per IP per resource
-    - Database constraints prevent duplicate likes
-    - Atomic transactions prevent race conditions
-    """
+    """Toggle like status for a resource"""
     try:
         with transaction.atomic():
             resource = AcademicResource.objects.select_for_update().get(
@@ -414,13 +385,11 @@ def toggle_resource_like(request, pk):
             )
             ip = get_client_ip(request)
             
-            # Validate IP address
             if not ip:
                 return Response({
                     'error': 'Unable to determine client IP'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Check if already liked by this IP using get_or_create for atomicity
             try:
                 like_obj, created = ResourceLike.objects.get_or_create(
                     resource=resource,
@@ -429,12 +398,10 @@ def toggle_resource_like(request, pk):
                 )
                 
                 if created:
-                    # New like created
                     resource.like_count = F('like_count') + 1
                     liked = True
                     message = 'Resource liked successfully'
                 else:
-                    # Like already exists, remove it (unlike)
                     like_obj.delete()
                     resource.like_count = F('like_count') - 1
                     liked = False
@@ -443,29 +410,16 @@ def toggle_resource_like(request, pk):
                 resource.save(update_fields=['like_count'])
                 resource.refresh_from_db()
                 
-                # Return success response
-                response_data = {
+                return Response({
                     'liked': liked,
                     'like_count': resource.like_count,
                     'message': message,
                     'resource_id': resource.id
-                }
-                
-                response = Response(response_data, status=status.HTTP_200_OK)
-                
-                # Add CORS headers explicitly for production
-                if not settings.DEBUG:
-                    response['Access-Control-Allow-Origin'] = request.META.get('HTTP_ORIGIN', '*')
-                    response['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-                    response['Access-Control-Allow-Headers'] = 'Content-Type, X-CSRFToken, X-Requested-With'
-                    response['Access-Control-Allow-Credentials'] = 'true'
-                
-                return response
+                })
                 
             except Exception as db_error:
                 return Response({
-                    'error': 'Database error occurred',
-                    'details': str(db_error) if settings.DEBUG else 'Please try again'
+                    'error': 'Database error occurred'
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
     except AcademicResource.DoesNotExist:
@@ -474,14 +428,8 @@ def toggle_resource_like(request, pk):
         }, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({
-            'error': 'Failed to update like status',
-            'details': str(e) if settings.DEBUG else 'Internal server error'
+            'error': 'Failed to update like status'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
-    except AcademicResource.DoesNotExist:
-        return Response({'error': 'Resource not found'}, status=status.HTTP_404_NOT_FOUND)
-    except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
 def academic_resource_detail(request, pk):
@@ -569,7 +517,6 @@ def get_resource_stats(request, pk):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
-@rate_limit_by_ip_and_resource(max_requests=20, window_seconds=60)  # Allow more downloads than likes
 def download_academic_resource(request, pk):
     """Download academic resource file and increment counter"""
     try:
@@ -579,51 +526,15 @@ def download_academic_resource(request, pk):
             if not resource.file:
                 return Response({'error': 'File not found'}, status=status.HTTP_404_NOT_FOUND)
             
-            # Increment download count atomically
+            # Increment download count
             resource.download_count = F('download_count') + 1
             resource.save(update_fields=['download_count'])
             
-            # Handle both local development and production (Cloudinary)
-            if settings.DEBUG:
-                # Development: Local file system
-                try:
-                    file_path = resource.file.path
-                    
-                    if not os.path.exists(file_path):
-                        return Response({'error': 'File not found on disk'}, status=status.HTTP_404_NOT_FOUND)
-                    
-                    # Get proper filename
-                    filename = os.path.basename(file_path)
-                    if not filename:
-                        filename = f"{resource.title}.pdf"  # fallback filename
-                    
-                    # Open and serve the file
-                    with open(file_path, 'rb') as f:
-                        response = HttpResponse(f.read(), content_type='application/octet-stream')
-                        response['Content-Disposition'] = f'attachment; filename="{filename}"'
-                        response['Content-Length'] = os.path.getsize(file_path)
-                        return response
-                        
-                except (AttributeError, OSError) as e:
-                    # Fallback to URL redirect if local file access fails
-                    return HttpResponse(status=302, headers={'Location': resource.file.url})
-            else:
-                # Production: Cloudinary storage - redirect to file URL
-                file_url = resource.file.url
-                
-                # Extract filename from URL or use title
-                try:
-                    filename = os.path.basename(file_url.split('?')[0])  # Remove query params
-                    if not filename or '.' not in filename:
-                        filename = f"{resource.title}.pdf"
-                except:
-                    filename = f"{resource.title}.pdf"
-                
-                # Return redirect response to Cloudinary URL
-                response = HttpResponse(status=302)
-                response['Location'] = file_url
-                response['Content-Disposition'] = f'attachment; filename="{filename}"'
-                return response
+            # Return redirect to file URL
+            response = HttpResponse(status=302)
+            response['Location'] = resource.file.url
+            response['Content-Disposition'] = f'attachment; filename="{resource.title}.pdf"'
+            return response
                 
     except AcademicResource.DoesNotExist:
         return Response({'error': 'Resource not found'}, status=status.HTTP_404_NOT_FOUND)

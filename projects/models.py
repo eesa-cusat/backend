@@ -90,6 +90,8 @@ class Project(models.Model):
             models.Index(fields=['category']),
             models.Index(fields=['created_by']),
             models.Index(fields=['is_featured', 'is_published']),
+            models.Index(fields=['created_at']),
+            models.Index(fields=['student_batch']),
         ]
     
     def __str__(self):
@@ -147,6 +149,9 @@ class TeamMember(models.Model):
     
     class Meta:
         ordering = ['name']
+        indexes = [
+            models.Index(fields=['project', 'name']),
+        ]
     
     def __str__(self):
         return f"{self.name} - {self.project.title}"
@@ -164,6 +169,10 @@ class ProjectImage(models.Model):
     
     class Meta:
         ordering = ['-is_featured', 'created_at']
+        indexes = [
+            models.Index(fields=['project', 'is_featured']),
+            models.Index(fields=['created_at']),
+        ]
     
     def __str__(self):
         return f"{self.project.title} - Image {self.id}"
@@ -182,6 +191,10 @@ class ProjectVideo(models.Model):
     
     class Meta:
         ordering = ['-is_featured', 'created_at']
+        indexes = [
+            models.Index(fields=['project', 'is_featured']),
+            models.Index(fields=['created_at']),
+        ]
     
     def __str__(self):
         return f"{self.project.title} - {self.title or 'Video'}"

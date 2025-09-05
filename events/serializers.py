@@ -27,6 +27,9 @@ class EventSerializer(serializers.ModelSerializer):
     schedule = EventScheduleSerializer(many=True, read_only=True)
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
     
+    # Gallery album with nested photos
+    album = serializers.SerializerMethodField()
+    
     # Dynamic properties
     is_upcoming = serializers.ReadOnlyField()
     is_past = serializers.ReadOnlyField()
@@ -48,11 +51,19 @@ class EventSerializer(serializers.ModelSerializer):
             'banner_image', 'event_flyer',
             'is_active', 'is_featured',
             'created_by_name', 'created_at', 'updated_at',
-            'speakers', 'schedule',
+            'speakers', 'schedule', 'album',
             'is_upcoming', 'is_past', 'is_ongoing', 'is_registration_open',
             'registration_count', 'spots_remaining'
         ]
         read_only_fields = ['created_at', 'updated_at']
+    
+    def get_album(self, obj):
+        """Get album with nested photos if available"""
+        if hasattr(obj, 'album') and obj.album:
+            # Import here to avoid circular import
+            from gallery.serializers import AlbumSerializer
+            return AlbumSerializer(obj.album, context=self.context).data
+        return None
 
 
 class EventListSerializer(serializers.ModelSerializer):
