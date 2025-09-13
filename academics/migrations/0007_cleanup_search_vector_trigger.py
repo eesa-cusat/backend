@@ -3,6 +3,21 @@
 from django.db import migrations
 
 
+def cleanup_postgresql_triggers(apps, schema_editor):
+    """Clean up PostgreSQL-specific triggers and functions."""
+    # Skip execution on non-PostgreSQL databases (e.g., SQLite dev)
+    if schema_editor.connection.vendor != 'postgresql':
+        return
+    
+    schema_editor.execute("DROP TRIGGER IF EXISTS update_academic_search_vector_trigger ON academics_academicresource;")
+    schema_editor.execute("DROP FUNCTION IF EXISTS update_academic_search_vector();")
+
+
+def reverse_cleanup(apps, schema_editor):
+    """No reverse operation - we don't want to recreate broken triggers."""
+    pass
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,14 +25,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # Clean up the PostgreSQL trigger and function that references non-existent search_vector field
-        migrations.RunSQL(
-            sql=[
-                "DROP TRIGGER IF EXISTS update_academic_search_vector_trigger ON academics_academicresource;",
-                "DROP FUNCTION IF EXISTS update_academic_search_vector();",
-            ],
-            reverse_sql=[
-                # No reverse - we don't want to recreate the broken trigger
-            ]
-        ),
+        # Clean up PostgreSQL-specific triggers and functions (skipped on SQLite)
+        migrations.RunPython(cleanup_postgresql_triggers, reverse_code=reverse_cleanup),
     ]

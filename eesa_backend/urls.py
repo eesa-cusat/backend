@@ -67,8 +67,8 @@ urlpatterns = [
     path('api/', api_root, name='api_root_alt'),
     path('health/', health_check, name='health_check'),
     
-    # Admin panel with custom URL
-    path('eesa/', admin.site.urls),
+    # Admin panel with custom URL (conditionally enabled)
+    path('eesa/', admin.site.urls) if settings.USE_ADMIN_INTERFACE else path('eesa/', lambda request: JsonResponse({'message': 'Admin interface disabled in production. Use separate frontend admin.'})),
     
     # API endpoints - organized by feature
     path('api/academics/', include('academics.urls')),

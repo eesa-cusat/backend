@@ -1,6 +1,7 @@
 """
 EESA Backend Settings - Production Optimized with Development Support
 Auto-detects environment and configures accordingly for PostgreSQL/Supabase production
+FIXED: HTTP development mode with proper HTTPS redirect control
 """
 
 import os
@@ -11,13 +12,27 @@ from dotenv import load_dotenv
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Load environment variables - try production first, then development
-load_dotenv(BASE_DIR / '.env.production', override=False)
-load_dotenv(BASE_DIR / '.env', override=False)
+# Load environment variables - Production optimized
+print("📁 Loading environment variables...")
+# Load .env file if it exists (for local development)
+load_dotenv(BASE_DIR / '.env')
 
-# Environment detection
-DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
+# Override with environment-specific config
+env_type = os.environ.get('DJANGO_ENV', 'development')
+if env_type == 'production':
+    load_dotenv(BASE_DIR / '.env.production', override=True)
+else:
+    load_dotenv(BASE_DIR / '.env.development', override=True)
+
+# Environment detection - FIXED: Better debugging
+DEBUG_ENV = os.environ.get('DEBUG', 'False')
+DEBUG = DEBUG_ENV.lower() in ('true', '1', 'yes', 'on')
 ENVIRONMENT = 'development' if DEBUG else 'production'
+
+# Debug environment loading
+print(f"🔍 DEBUG from env: '{DEBUG_ENV}'")
+print(f"🔍 DEBUG parsed: {DEBUG}")
+print(f"🔍 Environment detected: {ENVIRONMENT}")
 
 # Security settings
 SECRET_KEY = os.environ.get('SECRET_KEY', get_random_secret_key())
@@ -32,7 +47,7 @@ def get_list_from_env(key, default_value):
 
 # Allowed hosts configuration - production optimized
 if DEBUG:
-    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '*']
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', '*']
 else:
     ALLOWED_HOSTS = get_list_from_env('ALLOWED_HOSTS', 
         'eesacusat.in,www.eesacusat.in,*.eesacusat.in,*.onrender.com,eesabackend.onrender.com,*.railway.app,*.herokuapp.com,*.supabase.co'
@@ -61,9 +76,9 @@ INSTALLED_APPS = [
     'projects',
 ]
 
-# Middleware configuration - production optimized with development support
+# Middleware configuration - FIXED: Proper development/production split
 if DEBUG:
-    # Development: Minimal middleware for easier debugging
+    print("🔧 Development middleware: Minimal security middleware")
     MIDDLEWARE = [
         'corsheaders.middleware.CorsMiddleware',
         'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -75,7 +90,7 @@ if DEBUG:
         'django.middleware.clickjacking.XFrameOptionsMiddleware',
     ]
 else:
-    # Production: Full security middleware
+    print("🔒 Production middleware: Full security stack")
     MIDDLEWARE = [
         'corsheaders.middleware.CorsMiddleware',
         'django.middleware.security.SecurityMiddleware',
@@ -110,7 +125,7 @@ WSGI_APPLICATION = 'eesa_backend.wsgi.application'
 
 # Database configuration - PostgreSQL for production, SQLite for development
 if DEBUG:
-    # Development: SQLite for easy setup
+    print("🗄️ Using SQLite for development")
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
@@ -119,32 +134,36 @@ if DEBUG:
     }
 else:
     # Production: PostgreSQL/Supabase with optimization
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.environ.get('DB_NAME', 'postgres'),
-            'USER': os.environ.get('DB_USER', 'postgres'),
-            'PASSWORD': os.environ.get('DB_PASSWORD'),
-            'HOST': os.environ.get('DB_HOST'),
-            'PORT': os.environ.get('DB_PORT', '5432'),
-            'OPTIONS': {
-                'sslmode': 'require',  # Required for Supabase
-                'application_name': 'eesa_backend',
-                'connect_timeout': 10,
-                'options': '-c default_transaction_isolation=read_committed'
-            },
-            'CONN_MAX_AGE': 600,  # Connection pooling for 10 minutes
-            'CONN_HEALTH_CHECKS': True,  # Health checks for connection pooling
-            'ATOMIC_REQUESTS': False,  # Let views handle transactions
-            'AUTOCOMMIT': True,
+    if all([os.environ.get('DB_PASSWORD'), os.environ.get('DB_HOST')]):
+        print("🗄️ Using PostgreSQL/Supabase for production")
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': os.environ.get('DB_NAME', 'postgres'),
+                'USER': os.environ.get('DB_USER', 'postgres'),
+                'PASSWORD': os.environ.get('DB_PASSWORD'),
+                'HOST': os.environ.get('DB_HOST'),
+                'PORT': os.environ.get('DB_PORT', '5432'),
+                'OPTIONS': {
+                    'sslmode': 'require',
+                    'application_name': 'eesa_backend',
+                    'connect_timeout': 10,
+                    'options': '-c default_transaction_isolation=read_committed'
+                },
+                'CONN_MAX_AGE': 600,
+                'CONN_HEALTH_CHECKS': True,
+                'ATOMIC_REQUESTS': False,
+                'AUTOCOMMIT': True,
+            }
         }
-    } if all([os.environ.get('DB_PASSWORD'), os.environ.get('DB_HOST')]) else {
-        # Fallback to SQLite if PostgreSQL not configured
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
+    else:
+        print("⚠️ PostgreSQL not configured, falling back to SQLite")
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'db.sqlite3',
+            }
         }
-    }
 
 # Cloudinary configuration
 CLOUDINARY_CONFIG = {
@@ -152,12 +171,12 @@ CLOUDINARY_CONFIG = {
     'api_key': os.environ.get('CLOUDINARY_API_KEY'),
     'api_secret': os.environ.get('CLOUDINARY_API_SECRET'),
     'secure': True,
-    'folder': 'eesa_backend'  # Organize uploads in a folder
+    'folder': 'eesa_backend'
 }
 
-# Storage configuration - Cloudinary for production, local for development
+# Storage configuration
 if DEBUG:
-    # Development: Local storage
+    print("📁 Using local file storage for development")
     STORAGES = {
         "default": {
             "BACKEND": "django.core.files.storage.FileSystemStorage",
@@ -171,28 +190,38 @@ if DEBUG:
     STATIC_URL = '/static/'
     STATIC_ROOT = BASE_DIR / 'staticfiles'
 else:
-    # Production: Cloudinary storage with optimization
-    STORAGES = {
-        "default": {
-            "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
-        },
-        "staticfiles": {
-            "BACKEND": "cloudinary_storage.storage.StaticHashedCloudinaryStorage",
-        },
-    }
+    # Production: Cloudinary storage
+    if all(CLOUDINARY_CONFIG.values()):
+        print("☁️ Using Cloudinary storage for production")
+        STORAGES = {
+            "default": {
+                "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
+            },
+            "staticfiles": {
+                "BACKEND": "cloudinary_storage.storage.StaticHashedCloudinaryStorage",
+            },
+        }
+        STATICFILES_STORAGE = 'cloudinary_storage.storage.StaticHashedCloudinaryStorage'
+    else:
+        print("⚠️ Cloudinary not configured, using local storage")
+        STORAGES = {
+            "default": {
+                "BACKEND": "django.core.files.storage.FileSystemStorage",
+            },
+            "staticfiles": {
+                "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+            },
+        }
+    
     STATIC_URL = '/static/'
     STATIC_ROOT = BASE_DIR / 'staticfiles'
     MEDIA_URL = '/media/'
-    
-    # Fallback for collectstatic issues
-    STATICFILES_STORAGE = 'cloudinary_storage.storage.StaticHashedCloudinaryStorage'
 
 # Cloudinary setup for production
 if not DEBUG and all(CLOUDINARY_CONFIG.values()):
     import cloudinary
     cloudinary.config(**CLOUDINARY_CONFIG)
     
-    # Configure default folder for media files
     CLOUDINARY_STORAGE = {
         'CLOUD_NAME': CLOUDINARY_CONFIG['cloud_name'],
         'API_KEY': CLOUDINARY_CONFIG['api_key'],
@@ -235,7 +264,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Custom User Model
 AUTH_USER_MODEL = 'accounts.User'
 
-# REST Framework configuration - production optimized
+# REST Framework configuration
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.SessionAuthentication',
@@ -253,9 +282,9 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
-    ] if not DEBUG else [
+        'rest_framework.renderers.BrowsableAPIRenderer' if DEBUG else 'rest_framework.renderers.JSONRenderer',
+    ] if DEBUG else [
         'rest_framework.renderers.JSONRenderer',
-        'rest_framework.renderers.BrowsableAPIRenderer',
     ],
     'DEFAULT_METADATA_CLASS': 'rest_framework.metadata.SimpleMetadata',
 }
@@ -273,18 +302,20 @@ if not DEBUG:
         },
     })
 
-# CORS and CSRF configuration
+# CORS and CSRF configuration - FIXED: Better handling
 if DEBUG:
-    # Development: Allow local frontend origins
+    print("🌐 Development CORS: Allowing local origins with HTTP")
     DEV_ORIGINS = [
         'http://localhost:3000', 'http://127.0.0.1:3000',
-        'http://localhost:5173', 'http://127.0.0.1:5173',
+        'http://localhost:5173', 'http://127.0.0.1:5173', 
         'http://localhost:8080', 'http://127.0.0.1:8080'
     ]
     CORS_ALLOWED_ORIGINS = get_list_from_env('DEV_CORS_ALLOWED_ORIGINS', ','.join(DEV_ORIGINS))
     CSRF_TRUSTED_ORIGINS = get_list_from_env('DEV_CSRF_TRUSTED_ORIGINS', ','.join(DEV_ORIGINS))
+    print(f"🌐 CORS allowed origins: {CORS_ALLOWED_ORIGINS}")
+    print(f"🛡️ CSRF trusted origins: {CSRF_TRUSTED_ORIGINS}")
 else:
-    # Production: Secure origins only
+    print("🌐 Production CORS: Secure HTTPS origins only")
     PROD_ORIGINS = ['https://eesacusat.in', 'https://www.eesacusat.in']
     CORS_ALLOWED_ORIGINS = get_list_from_env('CORS_ALLOWED_ORIGINS', ','.join(PROD_ORIGINS))
     CSRF_TRUSTED_ORIGINS = get_list_from_env('CSRF_TRUSTED_ORIGINS', ','.join(PROD_ORIGINS))
@@ -296,9 +327,9 @@ CORS_ALLOW_HEADERS = [
     'dnt', 'origin', 'user-agent', 'x-csrftoken', 'x-requested-with'
 ]
 
-# Caching configuration - production optimized
+# Caching configuration
 if not DEBUG and os.environ.get('REDIS_URL'):
-    # Production with Redis
+    print("🔄 Using Redis cache for production")
     CACHES = {
         'default': {
             'BACKEND': 'django_redis.cache.RedisCache',
@@ -317,7 +348,7 @@ if not DEBUG and os.environ.get('REDIS_URL'):
         }
     }
 elif not DEBUG:
-    # Production fallback to database cache
+    print("🔄 Using database cache for production")
     CACHES = {
         'default': {
             'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
@@ -330,7 +361,7 @@ elif not DEBUG:
         }
     }
 else:
-    # Development: Simple cache
+    print("🔄 Using local memory cache for development")
     CACHES = {
         'default': {
             'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
@@ -339,20 +370,18 @@ else:
     }
 
 # Cache settings
-CACHE_TTL = 60 * 60 * 24 if not DEBUG else 60 * 5  # 24 hours prod, 5 minutes dev
+CACHE_TTL = 60 * 60 * 24 if not DEBUG else 60 * 5
 CACHE_KEY_PREFIX = f'eesa_{ENVIRONMENT}_'
 
 # Session configuration
 SESSION_ENGINE = 'django.contrib.sessions.backends.cache' if not DEBUG else 'django.contrib.sessions.backends.db'
 SESSION_CACHE_ALIAS = 'default'
 SESSION_COOKIE_AGE = 86400  # 24 hours
-SESSION_COOKIE_SECURE = not DEBUG
-SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SAMESITE = 'Lax'
 
-# Security settings - environment specific
+# FIXED: Security settings with proper development/production split
 if DEBUG:
-    # Development: Relaxed security for easier development
+    print("🔧 Development mode: HTTP allowed, security features disabled")
+    # Completely disable HTTPS redirects and security features for development
     SECURE_SSL_REDIRECT = False
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
@@ -362,8 +391,19 @@ if DEBUG:
     SECURE_BROWSER_XSS_FILTER = False
     SECURE_CONTENT_TYPE_NOSNIFF = False
     X_FRAME_OPTIONS = 'SAMEORIGIN'
+    
+    # Cookie settings for HTTP development
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    CSRF_COOKIE_HTTPONLY = False  # Allow JS access for development
+    CSRF_COOKIE_SAMESITE = 'Lax'
+    
+    # Remove any proxy headers that might force HTTPS
+    # Don't set SECURE_PROXY_SSL_HEADER in development
+    
 else:
-    # Production: Full security
+    print("🔒 Production mode: Full HTTPS security enabled")
+    # Production: Full security stack
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = 'DENY'
@@ -375,11 +415,27 @@ else:
     CSRF_COOKIE_SECURE = True
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+    
+    # Cookie settings for HTTPS production
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    CSRF_COOKIE_HTTPONLY = False
+    CSRF_COOKIE_SAMESITE = 'Lax'
 
-# Admin site customization
-ADMIN_SITE_HEADER = f"EESA Backend Administration ({ENVIRONMENT.title()})"
-ADMIN_SITE_TITLE = "EESA Admin Portal"
-ADMIN_INDEX_TITLE = f"Welcome to EESA Backend Administration - {ENVIRONMENT.title()}"
+# FIXED: Debug output for security settings
+print(f"🔒 SECURE_SSL_REDIRECT: {globals().get('SECURE_SSL_REDIRECT', 'NOT SET')}")
+print(f"🍪 SESSION_COOKIE_SECURE: {globals().get('SESSION_COOKIE_SECURE', 'NOT SET')}")
+print(f"🛡️ CSRF_COOKIE_SECURE: {globals().get('CSRF_COOKIE_SECURE', 'NOT SET')}")
+if not DEBUG:
+    print(f"🔐 SECURE_PROXY_SSL_HEADER: {globals().get('SECURE_PROXY_SSL_HEADER', 'NOT SET')}")
+
+# Admin site customization - Minimal for production use with separate frontend
+ADMIN_SITE_HEADER = f"EESA Backend API Administration ({ENVIRONMENT.title()})"
+ADMIN_SITE_TITLE = "EESA API Admin"
+ADMIN_INDEX_TITLE = f"EESA Backend API Management - {ENVIRONMENT.title()}"
+
+# Disable admin interface in production if using separate frontend admin
+USE_ADMIN_INTERFACE = DEBUG or os.environ.get('ENABLE_ADMIN_INTERFACE', 'False').lower() == 'true'
 
 # Logging configuration
 LOGGING = {
@@ -418,7 +474,6 @@ LOGGING = {
 
 # Add file logging for production
 if not DEBUG:
-    # Create logs directory
     logs_dir = BASE_DIR / 'logs'
     logs_dir.mkdir(exist_ok=True)
     
@@ -430,7 +485,7 @@ if not DEBUG:
     }
     LOGGING['loggers']['django']['handlers'].append('file')
 
-# Email configuration for production
+# Email configuration
 if not DEBUG:
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
     EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
@@ -448,7 +503,7 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
 # Port configuration
 PORT = int(os.environ.get('PORT', 8000))
 
-# Performance monitoring for production (optional)
+# Performance monitoring for production
 if not DEBUG and os.environ.get('SENTRY_DSN'):
     try:
         import logging
@@ -468,11 +523,23 @@ if not DEBUG and os.environ.get('SENTRY_DSN'):
             send_default_pii=True,
             environment='production'
         )
+        print("📊 Sentry monitoring enabled")
     except ImportError:
-        pass  # Sentry SDK not installed, skip monitoring
+        print("⚠️ Sentry SDK not installed, skipping monitoring")
 
-print(f"🚀 EESA Backend started in {ENVIRONMENT.upper()} mode")
-if not DEBUG:
-    print("🔒 Production security enabled")
-    print("🗄️ PostgreSQL database configured" if 'postgresql' in DATABASES['default']['ENGINE'] else "⚠️ Using SQLite fallback")
-    print("☁️ Cloudinary storage enabled" if all(CLOUDINARY_CONFIG.values()) else "⚠️ Using local storage fallback")
+# Final status output
+print(f"🚀 EESA Backend configured for {ENVIRONMENT.upper()} mode")
+if DEBUG:
+    print("🔓 HTTP development server ready")
+    print(f"📍 Access at: http://127.0.0.1:8000 or http://localhost:8000")
+else:
+    print("🔒 HTTPS production security enabled")
+    if 'postgresql' in DATABASES['default']['ENGINE']:
+        print("🗄️ PostgreSQL database connected")
+    else:
+        print("⚠️ Using SQLite fallback database")
+    
+    if all(CLOUDINARY_CONFIG.values()):
+        print("☁️ Cloudinary storage configured")
+    else:
+        print("⚠️ Using local storage fallback")
