@@ -20,7 +20,7 @@ class AlbumViewSet(viewsets.ModelViewSet):
         queryset = Album.objects.all()
         
         album_type = self.request.query_params.get('type')
-        if album_type in ['eesa', 'general']:
+        if album_type in ['eesa', 'general', 'alumni']:
             queryset = queryset.filter(type=album_type)
         
         return queryset.order_by('-created_at')
@@ -34,7 +34,7 @@ class AlbumViewSet(viewsets.ModelViewSet):
         album_type = request.query_params.get('type')
         
         queryset = self.get_queryset()
-        if album_type in ['eesa', 'general']:
+        if album_type in ['eesa', 'general', 'alumni']:
             queryset = queryset.filter(type=album_type)
         
         serializer = AlbumSerializer(queryset, many=True)

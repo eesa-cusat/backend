@@ -7,5 +7,4 @@ class AlumniConfig(AppConfig):
     verbose_name = 'Alumni Management'
     
     def ready(self):
-        # Import signals here if needed
-        pass
+        import alumni.signals
