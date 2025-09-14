@@ -12,15 +12,15 @@ router.register(r'schedules', views.EventScheduleViewSet, basename='eventschedul
 router.register(r'feedback', views.EventFeedbackViewSet, basename='eventfeedback')
 
 urlpatterns = [
-    # Include router URLs
-    path('', include(router.urls)),
-    
-    # Additional utility endpoints
+    # Additional utility endpoints FIRST (before router catches everything)
     path('upcoming/', views.upcoming_events, name='upcoming-events'),
     path('featured/', views.featured_events, name='featured-events'),
     path('stats/', views.event_stats, name='event-stats'),
     path('quick-register/', views.quick_register, name='quick-register'),
     path('submit-feedback/', views.submit_feedback, name='submit-feedback'),
+    
+    # Include router URLs (this catches remaining paths)
+    path('', include(router.urls)),
     
     # Notification endpoints
     path('notifications/', notification_views.active_notifications, name='active-notifications'),

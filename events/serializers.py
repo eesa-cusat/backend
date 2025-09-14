@@ -74,6 +74,10 @@ class EventListSerializer(serializers.ModelSerializer):
     registration_count = serializers.ReadOnlyField()
     spots_remaining = serializers.ReadOnlyField()
     
+    # Gallery information for backlink
+    gallery_album_id = serializers.SerializerMethodField()
+    photo_count = serializers.SerializerMethodField()
+    
     class Meta:
         model = Event
         fields = [
@@ -82,8 +86,17 @@ class EventListSerializer(serializers.ModelSerializer):
             'registration_required', 'max_participants', 'registration_fee',
             'banner_image', 'is_featured',
             'created_by_name', 'created_at',
-            'is_upcoming', 'is_registration_open', 'registration_count', 'spots_remaining'
+            'is_upcoming', 'is_registration_open', 'registration_count', 'spots_remaining',
+            'gallery_album_id', 'photo_count'
         ]
+    
+    def get_gallery_album_id(self, obj):
+        """Get album ID if available"""
+        return obj.album.id if hasattr(obj, 'album') and obj.album else None
+    
+    def get_photo_count(self, obj):
+        """Get photo count if album exists"""
+        return obj.album.photo_count if hasattr(obj, 'album') and obj.album else 0
 
 
 class EventRegistrationSerializer(serializers.ModelSerializer):
