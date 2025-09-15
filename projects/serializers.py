@@ -190,12 +190,22 @@ class ProjectListSerializer(serializers.ModelSerializer):
         return obj.team_members.count() + 1
     
     def get_thumbnail_image(self, obj):
-        """Get first featured image or first image as thumbnail"""
+        """Get project thumbnail image - prioritize direct project_images field, then gallery"""
+        # First priority: Direct project_images field (main cover image)
+        if obj.project_images:
+            return obj.project_images.url
+        
+        # Second priority: Featured gallery image
         featured_image = obj.images.filter(is_featured=True).first()
-        if featured_image:
-            return featured_image.image.url if featured_image.image else None
+        if featured_image and featured_image.image:
+            return featured_image.image.url
+            
+        # Third priority: First gallery image
         first_image = obj.images.first()
-        return first_image.image.url if first_image and first_image.image else None
+        if first_image and first_image.image:
+            return first_image.image.url
+            
+        return None
     
     def get_technologies(self, obj):
         """Extract technologies from description/abstract (placeholder)"""
