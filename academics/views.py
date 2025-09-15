@@ -1,15 +1,72 @@
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, viewsets
+from rest_framework.pagination import PageNumberPagination
 from django.http import HttpResponse
 from django.utils import timezone
-from django.db.models import F, Q
+from django.db.models import F, Q, Prefetch
 from django.db import transaction
 from django.views.decorators.csrf import csrf_exempt
 from .models import Scheme, Subject, AcademicResource, ResourceLike, ACADEMIC_CATEGORIES
-from .serializers import AcademicResourceSerializer
+from .serializers import AcademicResourceSerializer, AcademicResourceListSerializer
 import os
+
+
+class AcademicResourcePageNumberPagination(PageNumberPagination):
+    """Custom pagination for academic resources"""
+    page_size = 12
+    page_size_query_param = 'page_size'
+    max_page_size = 50
+
+
+class AcademicResourceViewSet(viewsets.ReadOnlyModelViewSet):
+    """Optimized ViewSet for Academic Resources with pagination"""
+    serializer_class = AcademicResourceListSerializer
+    pagination_class = AcademicResourcePageNumberPagination
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        queryset = AcademicResource.objects.filter(
+            is_approved=True
+        ).select_related(
+            'subject', 
+            'subject__scheme',
+            'uploaded_by'
+        ).order_by('-created_at')
+        
+        # Apply filters
+        category = self.request.query_params.get('category')
+        scheme_id = self.request.query_params.get('scheme')
+        subject_id = self.request.query_params.get('subject')
+        semester = self.request.query_params.get('semester')
+        search = self.request.query_params.get('search')
+        
+        if category:
+            queryset = queryset.filter(category=category)
+        
+        if scheme_id:
+            queryset = queryset.filter(subject__scheme_id=scheme_id)
+        
+        if subject_id:
+            queryset = queryset.filter(subject_id=subject_id)
+        
+        if semester:
+            try:
+                semester = int(semester)
+                queryset = queryset.filter(subject__semester=semester)
+            except (ValueError, TypeError):
+                pass
+        
+        if search:
+            queryset = queryset.filter(
+                Q(title__icontains=search) |
+                Q(description__icontains=search) |
+                Q(subject__name__icontains=search) |
+                Q(subject__code__icontains=search)
+            )
+        
+        return queryset
 
 
 @api_view(['GET'])

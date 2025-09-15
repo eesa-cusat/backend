@@ -67,7 +67,7 @@ class EventSerializer(serializers.ModelSerializer):
 
 
 class EventListSerializer(serializers.ModelSerializer):
-    """Simplified serializer for event lists"""
+    """Optimized serializer for event lists - includes all fields needed for cards"""
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
     is_upcoming = serializers.ReadOnlyField()
     is_registration_open = serializers.ReadOnlyField()
@@ -84,7 +84,8 @@ class EventListSerializer(serializers.ModelSerializer):
             'id', 'title', 'description', 'event_type', 'status',
             'start_date', 'end_date', 'location', 'venue',
             'registration_required', 'max_participants', 'registration_fee',
-            'banner_image', 'is_featured',
+            'banner_image', 'event_flyer',  # Add event_flyer to avoid secondary API calls
+            'is_featured',
             'created_by_name', 'created_at',
             'is_upcoming', 'is_registration_open', 'registration_count', 'spots_remaining',
             'gallery_album_id', 'photo_count'

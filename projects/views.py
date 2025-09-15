@@ -1,9 +1,17 @@
 from rest_framework import status, permissions, viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
+from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, Count, Prefetch
 from django.core.cache import cache
 from accounts.permissions import IsOwnerOrReadOnly, IsAcademicsTeamOrReadOnly
+
+
+class ProjectPageNumberPagination(PageNumberPagination):
+    """Custom pagination for projects"""
+    page_size = 12
+    page_size_query_param = 'page_size'
+    max_page_size = 50
 from .models import Project, ProjectImage, ProjectVideo, TeamMember
 from .serializers import (
     ProjectSerializer, ProjectCreateSerializer, ProjectUpdateSerializer, ProjectListSerializer,
@@ -65,7 +73,7 @@ def projects_batch_data(request):
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])  # Allow public access
 def projects_list(request):
-    """List all projects with comprehensive filtering - public access"""
+    """List all projects with pagination and comprehensive filtering - public access"""
     # Get filter parameters
     category = request.GET.get('category')
     search = request.GET.get('search')
@@ -74,7 +82,15 @@ def projects_list(request):
     has_demo = request.GET.get('has_demo')
     has_github = request.GET.get('has_github')
     
-    queryset = Project.objects.select_related('created_by').prefetch_related('team_members', 'images')
+    # Optimized queryset with only necessary fields
+    queryset = Project.objects.select_related('created_by').prefetch_related(
+        Prefetch('team_members', queryset=TeamMember.objects.only('name', 'project_id')),
+        Prefetch('images', queryset=ProjectImage.objects.filter(is_featured=True).only('image', 'project_id'))
+    ).only(
+        'id', 'title', 'description', 'category', 'student_batch', 'is_featured',
+        'github_url', 'demo_url', 'created_at', 
+        'created_by__username', 'created_by__first_name', 'created_by__last_name'
+    )
     
     # Apply filters
     if category and category != 'All Categories':
@@ -110,20 +126,19 @@ def projects_list(request):
             Q(team_members__name__icontains=search)
         ).distinct()
     
-    projects = queryset.order_by('-created_at')
+    projects = queryset.order_by('-is_featured', '-created_at')
     
-    # Get available creators for filtering
-    available_creators = Project.objects.select_related('created_by').values(
-        'created_by__id', 'created_by__username', 'created_by__first_name', 'created_by__last_name'
-    ).distinct().order_by('created_by__username')
+    # Apply pagination
+    paginator = ProjectPageNumberPagination()
+    page = paginator.paginate_queryset(projects, request)
+    if page is not None:
+        serializer = ProjectListSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
     
+    # Fallback if pagination fails
     return Response({
-        'projects': ProjectListSerializer(projects, many=True).data,
+        'results': ProjectListSerializer(projects, many=True).data,
         'count': projects.count(),
-        'filters': {
-            'categories': dict(Project.CATEGORY_CHOICES),
-            'creators': list(available_creators)
-        }
     })
 
 

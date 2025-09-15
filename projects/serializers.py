@@ -162,19 +162,56 @@ class ProjectUpdateSerializer(serializers.ModelSerializer):
 
 
 class ProjectListSerializer(serializers.ModelSerializer):
-    """Simplified project serializer for lists"""
+    """Optimized project serializer for lists - minimal data for fast loading"""
     
-    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    created_by_name = serializers.SerializerMethodField()
     team_count = serializers.SerializerMethodField()
-    thumbnail_image = serializers.ImageField(read_only=True, source='project_images')
+    thumbnail_image = serializers.SerializerMethodField()
+    technologies = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
     
     class Meta:
         model = Project
         fields = [
-            'id', 'title', 'description', 'category', 'github_url', 
-            'demo_url', 'thumbnail_image', 'created_by_name', 'team_count', 'created_at'
+            'id', 'title', 'description', 'category', 'student_batch',
+            'github_url', 'demo_url', 'thumbnail_image', 'is_featured',
+            'created_by_name', 'team_count', 'technologies', 'status', 'created_at'
         ]
     
+    def get_created_by_name(self, obj):
+        """Get creator's full name or username"""
+        if obj.created_by:
+            full_name = f"{obj.created_by.first_name} {obj.created_by.last_name}".strip()
+            return full_name if full_name else obj.created_by.username
+        return None
+    
     def get_team_count(self, obj):
-        # Include creator + team members
+        """Include creator + team members"""
         return obj.team_members.count() + 1
+    
+    def get_thumbnail_image(self, obj):
+        """Get first featured image or first image as thumbnail"""
+        featured_image = obj.images.filter(is_featured=True).first()
+        if featured_image:
+            return featured_image.image.url if featured_image.image else None
+        first_image = obj.images.first()
+        return first_image.image.url if first_image and first_image.image else None
+    
+    def get_technologies(self, obj):
+        """Extract technologies from description/abstract (placeholder)"""
+        # You can implement actual technology extraction logic here
+        # For now, return common tech categories based on project category
+        tech_mapping = {
+            'web_development': ['React', 'Node.js', 'JavaScript'],
+            'mobile_app': ['React Native', 'Flutter', 'Android'],
+            'machine_learning': ['Python', 'TensorFlow', 'scikit-learn'],
+            'iot': ['Arduino', 'Raspberry Pi', 'Sensors'],
+            'data_science': ['Python', 'Pandas', 'NumPy'],
+            'ai': ['Python', 'TensorFlow', 'PyTorch'],
+        }
+        return tech_mapping.get(obj.category, [obj.category.replace('_', ' ').title()])
+    
+    def get_status(self, obj):
+        """Determine project status (placeholder logic)"""
+        # You can implement actual status logic here
+        return 'completed'  # Default status

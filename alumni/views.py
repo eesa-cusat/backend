@@ -1,33 +1,48 @@
 import csv
 import io
 from django.http import HttpResponse
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Prefetch
 from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.pagination import PageNumberPagination
 from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import Alumni, AlumniBatch
 from .serializers import (
     AlumniSerializer, AlumniCreateSerializer, BulkAlumniImportSerializer,
     AlumniStatsSerializer, AlumniBatchSerializer, AlumniBatchListSerializer, 
-    AlumniBatchStatsSerializer
+    AlumniBatchStatsSerializer, AlumniListSerializer
 )
 from accounts.permissions import IsPeopleTeamOrReadOnly
 
 
+class AlumniPageNumberPagination(PageNumberPagination):
+    """Custom pagination for alumni listing"""
+    page_size = 12
+    page_size_query_param = 'page_size'
+    max_page_size = 50
+
+
 class AlumniViewSet(viewsets.ModelViewSet):
-    """Alumni CRUD operations with CSV import/export"""
+    """Alumni CRUD operations with CSV import/export and optimized pagination"""
     
-    queryset = Alumni.objects.select_related('batch').filter(is_active=True)
+    queryset = Alumni.objects.select_related('batch', 'created_by').filter(is_active=True)
     serializer_class = AlumniSerializer
     permission_classes = [IsPeopleTeamOrReadOnly]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['batch', 'employment_status', 'is_verified']
     search_fields = ['full_name', 'email', 'current_company']
-    ordering = ['id']
+    ordering = ['-created_at']
+    pagination_class = AlumniPageNumberPagination
+
+    def get_serializer_class(self):
+        """Use different serializers for list vs detail views"""
+        if self.action == 'list':
+            return AlumniListSerializer
+        return AlumniSerializer
     
     def get_queryset(self):
         queryset = self.queryset

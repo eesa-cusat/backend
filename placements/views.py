@@ -1,8 +1,9 @@
-from rest_framework import status, permissions
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework import status, permissions, viewsets
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
+from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Prefetch
 from accounts.permissions import IsAdminOrTechnicalHead
 from .models import Company, PlacementDrive, PlacementApplication, StudentCoordinator, PlacementStatistics
 from .serializers import (
@@ -11,6 +12,107 @@ from .serializers import (
     PlacementApplicationSerializer, PlacementApplicationListSerializer,
     StudentCoordinatorSerializer, PlacementStatisticsSerializer
 )
+
+
+class PlacementPageNumberPagination(PageNumberPagination):
+    """Custom pagination for placement-related listings"""
+    page_size = 12
+    page_size_query_param = 'page_size'
+    max_page_size = 50
+
+
+class PlacementDriveViewSet(viewsets.ModelViewSet):
+    """Optimized ViewSet for Placement Drives with pagination"""
+    serializer_class = PlacementDriveSerializer
+    pagination_class = PlacementPageNumberPagination
+    permission_classes = [permissions.AllowAny]
+
+    def get_queryset(self):
+        queryset = PlacementDrive.objects.filter(
+            is_active=True
+        ).select_related('company', 'created_by').order_by('-created_at')
+        
+        # Apply filters
+        status_filter = self.request.query_params.get('status')
+        if status_filter == 'upcoming':
+            queryset = queryset.filter(drive_date__gt=timezone.now())
+        elif status_filter == 'registration_open':
+            now = timezone.now()
+            queryset = queryset.filter(registration_start__lte=now, registration_end__gte=now)
+        elif status_filter == 'featured':
+            queryset = queryset.filter(is_featured=True)
+        
+        job_type = self.request.query_params.get('job_type')
+        if job_type:
+            queryset = queryset.filter(job_type=job_type)
+        
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(title__icontains=search) |
+                Q(company__name__icontains=search) |
+                Q(description__icontains=search)
+            )
+        
+        return queryset
+
+    def get_serializer_class(self):
+        """Use different serializers for list vs detail views"""
+        if self.action == 'list':
+            return PlacementDriveListSerializer
+        return PlacementDriveSerializer
+
+
+class PlacedStudentViewSet(viewsets.ModelViewSet):
+    """Optimized ViewSet for Placed Students with pagination"""
+    pagination_class = PlacementPageNumberPagination
+    permission_classes = [permissions.AllowAny]
+
+    def get_queryset(self):
+        from .models import PlacedStudent
+        queryset = PlacedStudent.objects.filter(
+            is_active=True
+        ).select_related('company', 'created_by').order_by('-offer_date', '-package_lpa')
+        
+        # Apply search filter
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(student_name__icontains=search) |
+                Q(company__name__icontains=search) |
+                Q(job_title__icontains=search) |
+                Q(branch__icontains=search)
+            )
+        
+        # Apply filters
+        batch_year = self.request.query_params.get('batch_year')
+        if batch_year:
+            queryset = queryset.filter(batch_year=batch_year)
+        
+        branch = self.request.query_params.get('branch')
+        if branch:
+            queryset = queryset.filter(branch__icontains=branch)
+        
+        company_id = self.request.query_params.get('company')
+        if company_id:
+            queryset = queryset.filter(company_id=company_id)
+        
+        verified_only = self.request.query_params.get('verified_only', 'false').lower() == 'true'
+        if verified_only:
+            queryset = queryset.filter(is_verified=True)
+        
+        category = self.request.query_params.get('category')
+        if category and category in ['core', 'tech', 'general']:
+            queryset = queryset.filter(category=category)
+        
+        return queryset
+
+    def get_serializer_class(self):
+        """Use different serializers for list vs detail views"""
+        from .serializers import PlacedStudentSerializer, PlacedStudentListSerializer
+        if self.action == 'list':
+            return PlacedStudentListSerializer
+        return PlacedStudentSerializer
 
 
 # Company views

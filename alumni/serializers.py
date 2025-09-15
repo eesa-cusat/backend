@@ -48,6 +48,22 @@ class AlumniBatchListSerializer(serializers.ModelSerializer):
         return obj.alumni_members.filter(is_active=True).count()
 
 
+class AlumniListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for alumni listing with minimal queries"""
+    batch_year_range = serializers.CharField(source='batch.batch_year_range', read_only=True)
+    batch_name = serializers.CharField(source='batch.batch_name', read_only=True)
+    years_since_graduation = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = Alumni
+        fields = [
+            'id', 'full_name', 'email', 'job_title', 'current_company',
+            'current_location', 'employment_status', 'is_verified',
+            'willing_to_mentor', 'batch_year_range', 'batch_name',
+            'years_since_graduation', 'created_at'
+        ]
+
+
 class AlumniSerializer(serializers.ModelSerializer):
     """Simplified Alumni serializer focused on essential information"""
     years_since_graduation = serializers.ReadOnlyField()
