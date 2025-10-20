@@ -15,7 +15,7 @@ class ProjectImageInline(admin.TabularInline):
     """Inline admin for project images"""
     model = ProjectImage
     extra = 1
-    fields = ('image', 'caption', 'is_featured')
+    fields = ('image', 'caption', 'image_preview')
     readonly_fields = ('image_preview',)
     
     def image_preview(self, obj):
@@ -29,30 +29,31 @@ class ProjectVideoInline(admin.TabularInline):
     """Inline admin for project videos"""
     model = ProjectVideo
     extra = 1
-    fields = ('video_url', 'title', 'is_featured')
+    fields = ('video_url', 'title', 'description')
 
 
 @admin.register(Project)
 class ProjectAdmin(admin.ModelAdmin):
     """Project Administration - Create and Manage Projects"""
     
-    list_display = ['title', 'category_display', 'student_batch', 'team_size', 'featured_status', 'published_status', 'created_by', 'created_at']
-    list_filter = ['category', 'is_featured', 'is_published', 'created_by', 'student_batch']
-    search_fields = ['title', 'description', 'abstract', 'student_batch']
+    list_display = ['title', 'category_display', 'academic_year', 'student_batch', 'team_size', 'featured_status', 'published_status', 'created_by', 'created_at']
+    list_filter = ['category', 'academic_year', 'is_featured', 'is_published', 'created_by', 'student_batch']
+    search_fields = ['title', 'description', 'abstract', 'student_batch', 'academic_year']
     ordering = ['-is_featured', '-created_at']
     
     fieldsets = [
         ('Project Information', {
-            'fields': ['title', 'description', 'abstract', 'category'],
+            'fields': ['title', 'abstract', 'category', 'academic_year'],
             'classes': ['wide']
         }),
         ('Student Information', {
             'fields': ['student_batch'],
             'classes': ['wide']
         }),
-        ('Project Files & Links', {
-            'fields': ['project_report', 'project_images', 'github_url', 'demo_url'],
-            'classes': ['wide']
+        ('Project Media & Files', {
+            'fields': ['thumbnail', 'project_report', 'github_url', 'demo_url'],
+            'classes': ['wide'],
+            'description': 'Thumbnail for project cards. Additional images can be added in "Project images" section below.'
         }),
         ('Project Settings', {
             'fields': ['is_featured', 'is_published'],

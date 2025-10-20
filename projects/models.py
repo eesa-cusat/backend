@@ -13,8 +13,17 @@ def project_report_upload_path(instance, filename):
     return f'projects/{category}/reports/{safe_title.replace(" ", "_")}{ext}'
 
 
+def project_thumbnail_upload_path(instance, filename):
+    """Generate upload path for project thumbnails"""
+    import os
+    name, ext = os.path.splitext(filename)
+    safe_title = "".join(c for c in instance.title if c.isalnum() or c in (' ', '-', '_')).rstrip()[:25]
+    category = instance.category.replace('_', '-')
+    return f'projects/{category}/thumbnails/{safe_title.replace(" ", "_")}{ext}'
+
+
 def project_image_upload_path(instance, filename):
-    """Generate upload path for project images"""
+    """Generate upload path for project main images"""
     import os
     name, ext = os.path.splitext(filename)
     safe_title = "".join(c for c in instance.title if c.isalnum() or c in (' ', '-', '_')).rstrip()[:25]
@@ -53,21 +62,28 @@ class Project(models.Model):
     abstract = models.TextField(blank=True, null=True, help_text="Project abstract or summary")
     category = models.CharField(max_length=30, choices=CATEGORY_CHOICES)
     
-    # Student Information
+    # Academic Information
     student_batch = models.CharField(max_length=20, blank=True, null=True, help_text="e.g., 2021-2025")
+    academic_year = models.CharField(max_length=10, blank=True, null=True, help_text="e.g., 2024, 2023")
     
-    # Files
+    # Media Files
+    thumbnail = models.ImageField(
+        upload_to=project_thumbnail_upload_path,
+        blank=True,
+        null=True,
+        help_text="Thumbnail image for project cards and listings (recommended: 800x600px)"
+    )
+    project_image = models.ImageField(
+        upload_to=project_image_upload_path,
+        blank=True,
+        null=True,
+        help_text="Main project image for detailed view (fallback if thumbnail not provided)"
+    )
     project_report = models.FileField(
         upload_to=project_report_upload_path, 
         blank=True, 
         null=True, 
-        help_text="Upload project report (PDF only). Maximum file size: 15MB."
-    )
-    project_images = models.ImageField(
-        upload_to=project_image_upload_path, 
-        blank=True, 
-        null=True, 
-        help_text="Main cover image for the project - this will be used as the thumbnail in project lists and cards"
+        help_text="Upload project report (PDF/DOC/DOCX). Maximum file size: 15MB."
     )
     
     # Links
@@ -92,6 +108,7 @@ class Project(models.Model):
             models.Index(fields=['is_featured', 'is_published']),
             models.Index(fields=['created_at']),
             models.Index(fields=['student_batch']),
+            models.Index(fields=['academic_year']),
         ]
     
     def __str__(self):
@@ -108,27 +125,32 @@ class Project(models.Model):
         return self.created_by.get_full_name() or self.created_by.username
     
     @property
-    def featured_image(self):
-        """Get the cover image for this project - prioritizes project_images field as thumbnail"""
-        # First priority: Direct project_images field (main thumbnail)
-        if self.project_images:
-            # Create a mock object that behaves like ProjectImage for API consistency
-            class MockProjectImage:
-                def __init__(self, image_field, project_title):
-                    self.image = image_field
-                    self.caption = f"{project_title} - Cover Image"
-                    self.is_featured = True
-                    self.id = 0
-                    self.created_at = None
-            return MockProjectImage(self.project_images, self.title)
+    def thumbnail_url(self):
+        """Get thumbnail URL with fallback to project_image"""
+        if self.thumbnail:
+            return self.thumbnail.url if hasattr(self.thumbnail, 'url') else None
+        elif self.project_image:
+            return self.project_image.url if hasattr(self.project_image, 'url') else None
+        # Fallback to first gallery image
+        first_image = self.images.first()
+        if first_image and first_image.image:
+            return first_image.image.url if hasattr(first_image.image, 'url') else None
+        return None
+    
+    @property
+    def report_file_type(self):
+        """Get the MIME type for the project report"""
+        if not self.project_report:
+            return None
         
-        # Second priority: Explicitly featured gallery image
-        featured = self.images.filter(is_featured=True).first()
-        if featured:
-            return featured
-            
-        # Third priority: First gallery image
-        return self.images.first()
+        filename = self.project_report.name.lower()
+        if filename.endswith('.pdf'):
+            return 'application/pdf'
+        elif filename.endswith('.docx'):
+            return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        elif filename.endswith('.doc'):
+            return 'application/msword'
+        return 'application/octet-stream'
     
     @property
     def featured_video(self):

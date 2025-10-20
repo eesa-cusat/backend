@@ -41,23 +41,55 @@ class ProjectVideoSerializer(serializers.ModelSerializer):
 
 
 class ProjectSerializer(serializers.ModelSerializer):
-    """Detailed project serializer"""
+    """Detailed project serializer - clean API response"""
     
     created_by = UserSerializer(read_only=True)
     team_members = TeamMemberSerializer(many=True, read_only=True)
     gallery_images = ProjectImageSerializer(many=True, read_only=True, source='images')
     videos = ProjectVideoSerializer(many=True, read_only=True)
-    thumbnail_image = serializers.ImageField(read_only=True, source='project_images')
+    
+    # Media URLs
+    thumbnail = serializers.SerializerMethodField()
+    project_image = serializers.SerializerMethodField()
+    project_report = serializers.SerializerMethodField()
     featured_video = serializers.SerializerMethodField()
     
     class Meta:
         model = Project
         fields = [
-            'id', 'title', 'description', 'abstract', 'category', 'student_batch',
-            'github_url', 'demo_url', 'project_report', 'created_by', 'team_members', 
-            'thumbnail_image', 'gallery_images', 'videos', 'featured_video', 'created_at', 'updated_at'
+            'id', 'title', 'description', 'abstract', 'category', 'student_batch', 'academic_year',
+            'github_url', 'demo_url', 'thumbnail', 'project_image', 'project_report',
+            'created_by', 'team_members', 'gallery_images', 'videos', 'featured_video',
+            'is_featured', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
+    
+    def get_thumbnail(self, obj):
+        """Get thumbnail URL"""
+        if obj.thumbnail:
+            request = self.context.get('request')
+            if request and hasattr(obj.thumbnail, 'url'):
+                return request.build_absolute_uri(obj.thumbnail.url)
+        return None
+    
+    def get_project_image(self, obj):
+        """Get main project image URL"""
+        if obj.project_image:
+            request = self.context.get('request')
+            if request and hasattr(obj.project_image, 'url'):
+                return request.build_absolute_uri(obj.project_image.url)
+        return None
+    
+    def get_project_report(self, obj):
+        """Get project report info with proper metadata"""
+        if obj.project_report:
+            request = self.context.get('request')
+            return {
+                'url': request.build_absolute_uri(obj.project_report.url) if request and hasattr(obj.project_report, 'url') else None,
+                'file_type': obj.report_file_type,
+                'filename': obj.project_report.name.split('/')[-1] if obj.project_report.name else None,
+            }
+        return None
     
     def get_featured_video(self, obj):
         """Get the featured video for this project"""
@@ -77,8 +109,9 @@ class ProjectCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
         fields = [
-            'title', 'description', 'abstract', 'category', 'student_batch', 'github_url', 
-            'demo_url', 'project_report', 'team_members', 'images', 'videos'
+            'title', 'description', 'abstract', 'category', 'student_batch', 'academic_year',
+            'github_url', 'demo_url', 'thumbnail', 'project_image', 'project_report',
+            'team_members', 'images', 'videos'
         ]
     
     def create(self, validated_data):
@@ -117,8 +150,9 @@ class ProjectUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
         fields = [
-            'title', 'description', 'abstract', 'category', 'student_batch', 'github_url', 
-            'demo_url', 'project_report', 'team_members', 'images', 'videos'
+            'title', 'description', 'abstract', 'category', 'student_batch', 'academic_year',
+            'github_url', 'demo_url', 'thumbnail', 'project_image', 'project_report',
+            'team_members', 'images', 'videos'
         ]
     
     def update(self, instance, validated_data):
@@ -166,16 +200,15 @@ class ProjectListSerializer(serializers.ModelSerializer):
     
     created_by_name = serializers.SerializerMethodField()
     team_count = serializers.SerializerMethodField()
-    thumbnail_image = serializers.SerializerMethodField()
+    thumbnail = serializers.SerializerMethodField()
     technologies = serializers.SerializerMethodField()
-    status = serializers.SerializerMethodField()
     
     class Meta:
         model = Project
         fields = [
-            'id', 'title', 'description', 'category', 'student_batch',
-            'github_url', 'demo_url', 'thumbnail_image', 'is_featured',
-            'created_by_name', 'team_count', 'technologies', 'status', 'created_at'
+            'id', 'title', 'description', 'abstract', 'category', 'student_batch', 'academic_year',
+            'github_url', 'demo_url', 'thumbnail', 'is_featured',
+            'created_by_name', 'team_count', 'technologies', 'created_at'
         ]
     
     def get_created_by_name(self, obj):
@@ -189,13 +222,24 @@ class ProjectListSerializer(serializers.ModelSerializer):
         """Include creator + team members"""
         return obj.team_members.count() + 1
     
-    def get_thumbnail_image(self, obj):
-        """Get first featured image or first image as thumbnail"""
-        featured_image = obj.images.filter(is_featured=True).first()
-        if featured_image:
-            return featured_image.image.url if featured_image.image else None
+    def get_thumbnail(self, obj):
+        """Get thumbnail with fallback logic"""
+        request = self.context.get('request')
+        
+        # Priority 1: thumbnail field
+        if obj.thumbnail and hasattr(obj.thumbnail, 'url'):
+            return request.build_absolute_uri(obj.thumbnail.url) if request else obj.thumbnail.url
+        
+        # Priority 2: project_image field
+        if obj.project_image and hasattr(obj.project_image, 'url'):
+            return request.build_absolute_uri(obj.project_image.url) if request else obj.project_image.url
+        
+        # Priority 3: first gallery image
         first_image = obj.images.first()
-        return first_image.image.url if first_image and first_image.image else None
+        if first_image and first_image.image and hasattr(first_image.image, 'url'):
+            return request.build_absolute_uri(first_image.image.url) if request else first_image.image.url
+        
+        return None
     
     def get_technologies(self, obj):
         """Extract technologies from description/abstract (placeholder)"""
@@ -210,8 +254,3 @@ class ProjectListSerializer(serializers.ModelSerializer):
             'ai': ['Python', 'TensorFlow', 'PyTorch'],
         }
         return tech_mapping.get(obj.category, [obj.category.replace('_', ' ').title()])
-    
-    def get_status(self, obj):
-        """Determine project status (placeholder logic)"""
-        # You can implement actual status logic here
-        return 'completed'  # Default status

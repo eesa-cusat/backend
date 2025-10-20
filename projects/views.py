@@ -22,52 +22,108 @@ from .serializers import (
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
 def projects_batch_data(request):
-    """Optimized batch endpoint for projects page - loads everything at once"""
+    """Optimized batch endpoint for projects page - loads everything at once with caching"""
+    from django.core.cache import cache
+    import logging
+    import hashlib
+    
+    logger = logging.getLogger('eesa_backend.queries')
+    
     # Get filter parameters
     category = request.GET.get('category')
     search = request.GET.get('search')
+    year = request.GET.get('year')  # New year filter
     
-    # Base queryset with optimizations
-    queryset = Project.objects.select_related('created_by').prefetch_related(
-        Prefetch('team_members', queryset=TeamMember.objects.only('name', 'project_id')),
-        Prefetch('images', queryset=ProjectImage.objects.filter(is_featured=True).only('image', 'project_id')),
-        'videos'
+    # Create cache key based on filters
+    filter_string = f"cat:{category or 'all'}_search:{search or 'none'}_year:{year or 'all'}"
+    cache_key_hash = hashlib.md5(filter_string.encode()).hexdigest()
+    cache_key = f'projects_batch_data_{cache_key_hash}'
+    
+    # Try cache first for filtered results (5 minutes cache)
+    if not search:  # Only cache non-search results
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            logger.info(f"Projects batch data served from cache (key: {cache_key})")
+            return Response(cached_data)
+    
+    logger.info(f"Generating fresh projects batch data (filters: {filter_string})")
+    
+    # Base queryset with aggressive optimizations
+    base_queryset = Project.objects.select_related('created_by').prefetch_related(
+        Prefetch('team_members', 
+                queryset=TeamMember.objects.only('name', 'project_id', 'role')),
+        Prefetch('images', 
+                queryset=ProjectImage.objects.only('image', 'project_id')),
     ).filter(is_published=True).only(
-        'id', 'title', 'description', 'category', 'created_at', 'is_featured',
+        'id', 'title', 'description', 'abstract', 'category', 'created_at', 'is_featured',
         'demo_url', 'github_url', 'created_by__username', 'created_by__first_name',
-        'created_by__last_name', 'student_batch'
+        'created_by__last_name', 'student_batch', 'academic_year', 'thumbnail', 'project_image'
     )
     
     # Apply filters
+    queryset = base_queryset
+    
+    # Category filter
     if category and category != 'All Categories':
         queryset = queryset.filter(category=category)
     
-    if search:
-        queryset = queryset.filter(
-            Q(title__icontains=search) |
-            Q(description__icontains=search) |
-            Q(created_by__first_name__icontains=search) |
-            Q(created_by__last_name__icontains=search) |
-            Q(team_members__name__icontains=search)
-        ).distinct()
+    # Year filter (NEW)
+    if year:
+        queryset = queryset.filter(academic_year=year)
     
+    # Search filter
+    if search:
+        # Optimized search with database indexes
+        search_terms = search.split()[:3]  # Limit search terms to prevent slow queries
+        search_query = Q()
+        for term in search_terms:
+            search_query |= (
+                Q(title__icontains=term) |
+                Q(description__icontains=term) |
+                Q(abstract__icontains=term) |
+                Q(created_by__first_name__icontains=term) |
+                Q(created_by__last_name__icontains=term)
+            )
+        queryset = queryset.filter(search_query).distinct()
+    
+    # Order and limit results
     projects = queryset.order_by('-is_featured', '-created_at')
     
-    # Get all metadata in single queries
+    # Get categories from choices (no DB query needed)
     categories = dict(Project.CATEGORY_CHOICES)
+    
+    # Get available years for filtering
+    available_years = Project.objects.filter(
+        is_published=True, 
+        academic_year__isnull=False
+    ).values_list('academic_year', flat=True).distinct().order_by('-academic_year')
+    
+    # Use slicing to avoid COUNT() queries
     featured_projects = projects.filter(is_featured=True)[:4]
     recent_projects = projects[:12]
     
-    return Response({
-        'projects': ProjectListSerializer(recent_projects, many=True).data,
-        'featured_projects': ProjectListSerializer(featured_projects, many=True).data,
+    # Get total count only if needed (expensive operation)
+    total_count = projects.count() if len(projects) <= 100 else '100+'
+    
+    response_data = {
+        'projects': ProjectListSerializer(recent_projects, many=True, context={'request': request}).data,
+        'featured_projects': ProjectListSerializer(featured_projects, many=True, context={'request': request}).data,
         'categories': categories,
-        'total_count': projects.count(),
+        'available_years': list(available_years),
+        'total_count': total_count,
         'filters': {
             'category': category or 'All Categories',
+            'year': year or 'All Years',
             'search': search or ''
         }
-    })
+    }
+    
+    # Cache non-search results for 5 minutes
+    if not search:
+        cache.set(cache_key, response_data, 300)
+        logger.info(f"Projects batch data cached (key: {cache_key})")
+    
+    return Response(response_data)
 
 
 @api_view(['GET'])
@@ -81,20 +137,25 @@ def projects_list(request):
     team_size = request.GET.get('team_size')
     has_demo = request.GET.get('has_demo')
     has_github = request.GET.get('has_github')
+    year = request.GET.get('year')  # New year filter
     
     # Optimized queryset with only necessary fields
     queryset = Project.objects.select_related('created_by').prefetch_related(
         Prefetch('team_members', queryset=TeamMember.objects.only('name', 'project_id')),
         Prefetch('images', queryset=ProjectImage.objects.filter(is_featured=True).only('image', 'project_id'))
     ).only(
-        'id', 'title', 'description', 'category', 'student_batch', 'is_featured',
-        'github_url', 'demo_url', 'created_at', 
+        'id', 'title', 'description', 'abstract', 'category', 'student_batch', 'academic_year',
+        'is_featured', 'github_url', 'demo_url', 'created_at', 'thumbnail', 'project_image',
         'created_by__username', 'created_by__first_name', 'created_by__last_name'
     )
     
     # Apply filters
     if category and category != 'All Categories':
         queryset = queryset.filter(category=category)
+    
+    # Year filter (NEW)
+    if year:
+        queryset = queryset.filter(academic_year=year)
     
     if creator:
         queryset = queryset.filter(created_by__username__icontains=creator)
@@ -120,6 +181,7 @@ def projects_list(request):
         queryset = queryset.filter(
             Q(title__icontains=search) |
             Q(description__icontains=search) |
+            Q(abstract__icontains=search) |
             Q(created_by__first_name__icontains=search) |
             Q(created_by__last_name__icontains=search) |
             Q(created_by__username__icontains=search) |
@@ -132,12 +194,12 @@ def projects_list(request):
     paginator = ProjectPageNumberPagination()
     page = paginator.paginate_queryset(projects, request)
     if page is not None:
-        serializer = ProjectListSerializer(page, many=True)
+        serializer = ProjectListSerializer(page, many=True, context={'request': request})
         return paginator.get_paginated_response(serializer.data)
     
     # Fallback if pagination fails
     return Response({
-        'results': ProjectListSerializer(projects, many=True).data,
+        'results': ProjectListSerializer(projects, many=True, context={'request': request}).data,
         'count': projects.count(),
     })
 
@@ -150,9 +212,70 @@ def project_detail(request, pk):
         project = Project.objects.select_related('created_by').prefetch_related(
             'team_members', 'images', 'videos'
         ).get(pk=pk)
-        return Response(ProjectSerializer(project).data)
+        return Response(ProjectSerializer(project, context={'request': request}).data)
     except Project.DoesNotExist:
         return Response({'error': 'Project not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def project_report(request, pk):
+    """Serve project report file with proper Content-Type headers"""
+    from django.http import FileResponse, HttpResponse
+    import mimetypes
+    
+    try:
+        project = Project.objects.get(pk=pk, is_published=True)
+        
+        if not project.project_report:
+            return Response({
+                'error': 'Project report not available'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get the file
+        report_file = project.project_report
+        
+        # Determine Content-Type based on file extension
+        filename = report_file.name.lower()
+        if filename.endswith('.pdf'):
+            content_type = 'application/pdf'
+        elif filename.endswith('.docx'):
+            content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        elif filename.endswith('.doc'):
+            content_type = 'application/msword'
+        else:
+            # Fallback to guessing
+            content_type, _ = mimetypes.guess_type(report_file.name)
+            if not content_type:
+                content_type = 'application/octet-stream'
+        
+        # For Cloudinary or remote files, redirect
+        if hasattr(report_file, 'url'):
+            response = HttpResponse(status=302)
+            response['Location'] = report_file.url
+            response['Content-Type'] = content_type
+            # CORS headers for opening in new tab
+            response['Access-Control-Allow-Origin'] = '*'
+            response['Access-Control-Expose-Headers'] = 'Content-Type, Content-Disposition'
+            return response
+        
+        # For local files, serve directly
+        try:
+            response = FileResponse(report_file.open('rb'), content_type=content_type)
+            response['Content-Disposition'] = f'inline; filename="{report_file.name.split("/")[-1]}"'
+            # CORS headers
+            response['Access-Control-Allow-Origin'] = '*'
+            response['Access-Control-Expose-Headers'] = 'Content-Type, Content-Disposition'
+            return response
+        except Exception as e:
+            return Response({
+                'error': f'Failed to open report file: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+    except Project.DoesNotExist:
+        return Response({
+            'error': 'Project not found'
+        }, status=status.HTTP_404_NOT_FOUND)
 
 
 @api_view(['POST'])
