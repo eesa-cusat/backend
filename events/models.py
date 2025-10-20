@@ -101,6 +101,13 @@ class Event(models.Model):
     banner_image = models.ImageField(upload_to=event_banner_upload_path, blank=True, null=True)
     event_flyer = models.FileField(upload_to=event_flyer_upload_path, blank=True, null=True)
     
+    # Speaker names (stored as JSON list of names - simple text, no relations)
+    speaker_names = models.JSONField(
+        default=list, 
+        blank=True,
+        help_text="List of speaker names as simple text. Example: ['Dr. John Smith', 'Prof. Jane Doe']"
+    )
+    
     # Management
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_events')
     is_active = models.BooleanField(default=True)
@@ -215,10 +222,28 @@ class EventRegistration(models.Model):
     def __str__(self):
         return f"{self.name} - {self.event.title}"
     
+    def clean(self):
+        """Validate payment reference for paid events"""
+        from django.core.exceptions import ValidationError
+        
+        # Check if event requires payment
+        if self.event.payment_required and self.event.registration_fee > 0:
+            # If payment status is not exempted, require payment reference
+            if self.payment_status not in ['exempted', 'refunded'] and not self.payment_reference:
+                raise ValidationError({
+                    'payment_reference': f'Payment reference (UPI Transaction ID) is required for this paid event. '
+                                       f'Registration fee: ₹{self.event.registration_fee}. '
+                                       f'Please enter the UPI reference ID or mark payment as "Exempted".'
+                })
+    
     def save(self, *args, **kwargs):
         # Set payment amount from event if not set
         if not self.payment_amount:
             self.payment_amount = self.event.registration_fee
+        
+        # Run validation before saving
+        self.clean()
+        
         super().save(*args, **kwargs)
 
 
@@ -257,16 +282,21 @@ class EventSchedule(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='schedule')
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
-    speaker = models.ForeignKey(EventSpeaker, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    # Speaker as plain text (no foreign key)
+    speaker_name = models.CharField(max_length=200, blank=True, null=True, help_text="Enter speaker name")
+    
+    # Date and time fields
+    schedule_date = models.DateField(help_text="Date of this schedule item", default=timezone.now)
     start_time = models.TimeField()
     end_time = models.TimeField()
     venue_details = models.CharField(max_length=200, blank=True, null=True)
     
     class Meta:
-        ordering = ['start_time']
+        ordering = ['schedule_date', 'start_time']
     
     def __str__(self):
-        return f"{self.title} ({self.start_time} - {self.end_time})"
+        return f"{self.title} ({self.schedule_date} {self.start_time} - {self.end_time})"
 
 
 class EventFeedback(models.Model):

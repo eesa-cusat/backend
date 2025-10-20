@@ -3,6 +3,7 @@ from .models import Event, EventRegistration, EventSpeaker, EventSchedule, Event
 
 
 class EventSpeakerSerializer(serializers.ModelSerializer):
+    """Keep for backwards compatibility with existing EventSpeaker records"""
     class Meta:
         model = EventSpeaker
         fields = [
@@ -13,17 +14,22 @@ class EventSpeakerSerializer(serializers.ModelSerializer):
 
 
 class EventScheduleSerializer(serializers.ModelSerializer):
+    # Support both old speaker FK and new speaker_name text field
     speaker = EventSpeakerSerializer(read_only=True)
     
     class Meta:
         model = EventSchedule
         fields = [
-            'id', 'title', 'description', 'speaker', 'start_time', 'end_time', 'venue_details'
+            'id', 'title', 'description', 'speaker_name', 'schedule_date', 
+            'start_time', 'end_time', 'venue_details', 'speaker'
         ]
 
 
 class EventSerializer(serializers.ModelSerializer):
-    speakers = EventSpeakerSerializer(many=True, read_only=True)
+    # Support both old EventSpeaker FK (for backwards compatibility) and new speaker_names JSON
+    speakers = EventSpeakerSerializer(many=True, read_only=True)  # Old FK relation
+    speaker_names = serializers.ListField(child=serializers.CharField(), read_only=True)  # New JSON field
+    
     schedule = EventScheduleSerializer(many=True, read_only=True)
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
     
@@ -51,7 +57,7 @@ class EventSerializer(serializers.ModelSerializer):
             'banner_image', 'event_flyer',
             'is_active', 'is_featured',
             'created_by_name', 'created_at', 'updated_at',
-            'speakers', 'schedule', 'album',
+            'speakers', 'speaker_names', 'schedule', 'album',  # Include both speakers fields
             'is_upcoming', 'is_past', 'is_ongoing', 'is_registration_open',
             'registration_count', 'spots_remaining'
         ]

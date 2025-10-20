@@ -1,60 +1,58 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from django.db.models import Count
+from django.urls import reverse
+from django.utils.safestring import mark_safe
 from django.http import HttpResponse
+from django.db.models import Count, Sum, Q
 from django.utils import timezone
-from django import forms
+from django.core.exceptions import ValidationError
+from django.forms import ModelForm
 
 import csv
-from .models import Event, EventRegistration, EventSchedule, Notification, NotificationSettings
+from .models import Event, EventRegistration, EventSpeaker, EventSchedule, Notification, NotificationSettings
 
 
-# Custom form for adding speakers as simple text list
-class EventAdminForm(forms.ModelForm):
-    speaker_names = forms.CharField(
-        required=False,
-        widget=forms.Textarea(attrs={'rows': 3, 'cols': 40}),
-        help_text="Enter speaker names, one per line. Example:<br>Dr. John Smith<br>Prof. Jane Doe<br>Alice Johnson",
-        label="Speaker Names"
-    )
+# Hidden admin for EventSpeaker - only for autocomplete support, not shown in menu
+class EventSpeakerAdmin(admin.ModelAdmin):
+    """
+    This admin is NOT registered to prevent EventSpeaker from appearing in the admin menu.
+    Speakers are managed exclusively through the Event inline forms.
+    This class exists only to enable autocomplete in EventSchedule inline.
+    """
+    search_fields = ['name', 'title', 'organization', 'talk_title']
     
-    class Meta:
-        model = Event
-        fields = '__all__'
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Pre-fill speaker names from JSON
-        if self.instance and self.instance.pk and self.instance.speaker_names:
-            self.fields['speaker_names'].initial = '\n'.join(self.instance.speaker_names)
-    
-    def save(self, commit=True):
-        instance = super().save(commit=False)
-        
-        # Convert textarea input to JSON list
-        speaker_text = self.cleaned_data.get('speaker_names', '')
-        if speaker_text:
-            # Split by newlines and filter empty strings
-            speakers_list = [s.strip() for s in speaker_text.split('\n') if s.strip()]
-            instance.speaker_names = speakers_list
-        else:
-            instance.speaker_names = []
-        
-        if commit:
-            instance.save()
-        return instance
+    def has_module_permission(self, request):
+        # Hide from admin index
+        return False
+
+
+# Register hidden EventSpeaker admin for autocomplete only
+admin.site.register(EventSpeaker, EventSpeakerAdmin)
 
 
 class EventScheduleInline(admin.TabularInline):
     model = EventSchedule
     extra = 1
-    fields = ['title', 'description', 'speaker_name', 'schedule_date', 'start_time', 'end_time', 'venue_details']
+    fields = ['title', 'description', 'speaker', 'start_time', 'end_time', 'venue_details']
+    # Enable autocomplete for speaker field to show speakers in real-time
+    autocomplete_fields = ['speaker']
+
+
+class EventSpeakerInline(admin.TabularInline):
+    model = EventSpeaker
+    extra = 1
+    fields = ['name', 'title', 'organization', 'talk_title', 'order']
+    readonly_fields = ['profile_image_preview']
+    
+    def profile_image_preview(self, obj):
+        if obj.profile_image:
+            return format_html('<img src="{}" style="width: 50px; height: 50px; border-radius: 50%;" />', obj.profile_image.url)
+        return "No Image"
+    profile_image_preview.short_description = "Profile Image"
 
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
-    form = EventAdminForm
-    
     list_display = [
         'title', 'event_type', 'start_date_formatted', 'status', 'registration_count',
         'is_upcoming_indicator', 'is_featured_indicator', 'created_by'
@@ -65,7 +63,7 @@ class EventAdmin(admin.ModelAdmin):
     ]
     search_fields = ['title', 'description', 'location', 'venue']
     readonly_fields = ['created_by', 'created_at', 'updated_at', 'spots_remaining']
-    inlines = [EventScheduleInline]
+    inlines = [EventSpeakerInline, EventScheduleInline]
     actions = ['mark_as_featured', 'mark_as_published', 'mark_as_cancelled', 'export_registrations_csv']
     
     fieldsets = (
@@ -77,10 +75,6 @@ class EventAdmin(admin.ModelAdmin):
         }),
         ('Location', {
             'fields': ('location', 'venue', 'address', 'is_online', 'meeting_link')
-        }),
-        ('Speakers', {
-            'fields': ('speaker_names',),
-            'description': 'Add speaker names as plain text (one per line). These names can be used when creating schedules.'
         }),
         ('Registration Settings', {
             'fields': ('registration_required', 'max_participants', 'spots_remaining')
@@ -129,6 +123,7 @@ class EventAdmin(admin.ModelAdmin):
     is_featured_indicator.short_description = 'Featured'
     
     def registration_count(self, obj):
+        # Use annotation if available, otherwise use model property
         count = getattr(obj, 'registration_count_annotation', None)
         if count is None:
             count = obj.registration_count
@@ -192,7 +187,7 @@ class EventAdmin(admin.ModelAdmin):
     
     def save_model(self, request, obj, form, change):
         """Auto-populate created_by field"""
-        if not change:
+        if not change:  # If creating new object
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
 
@@ -200,8 +195,8 @@ class EventAdmin(admin.ModelAdmin):
 @admin.register(EventRegistration)
 class EventRegistrationAdmin(admin.ModelAdmin):
     list_display = [
-        'name', 'email', 'event', 'payment_status', 'payment_amount',
-        'attended', 'certificate_issued', 'registered_at'
+        'name', 'email', 'event_title_link', 'payment_status_badge', 'payment_amount',
+        'attended_badge', 'certificate_issued_badge', 'registered_at'
     ]
     list_filter = [
         'event', 'payment_status', 'attended', 'certificate_issued',
@@ -210,7 +205,10 @@ class EventRegistrationAdmin(admin.ModelAdmin):
     search_fields = ['name', 'email', 'mobile_number', 'institution', 'organization', 'event__title']
     readonly_fields = ['registered_at', 'updated_at']
     actions = ['mark_as_attended', 'mark_certificates_issued', 'verify_payment']
-    list_select_related = ['event', 'payment_verified_by']
+    
+    # Group registrations by event for better organization
+    list_select_related = ['event']
+    date_hierarchy = 'registered_at'  # Add date hierarchy for easy filtering
     
     fieldsets = (
         ('Event Registration', {
@@ -244,9 +242,79 @@ class EventRegistrationAdmin(admin.ModelAdmin):
     )
     
     def get_queryset(self, request):
-        """Optimize query and order by event"""
+        """Optimize query and order by event for better grouping"""
         qs = super().get_queryset(request)
         return qs.select_related('event', 'payment_verified_by').order_by('event__start_date', 'event__title', '-registered_at')
+    
+    def event_title_link(self, obj):
+        """Display event title with link to event details"""
+        url = reverse('admin:events_event_change', args=[obj.event.pk])
+        return format_html(
+            '<a href="{}" style="font-weight: bold; color: #0066cc;">{}</a>',
+            url,
+            obj.event.title
+        )
+    event_title_link.short_description = 'Event'
+    event_title_link.admin_order_field = 'event__title'
+    
+    def payment_status_badge(self, obj):
+        """Display payment status with colored badges"""
+        colors = {
+            'pending': '#ff9800',
+            'paid': '#4caf50',
+            'failed': '#f44336',
+            'refunded': '#9e9e9e',
+            'exempted': '#2196f3',
+        }
+        color = colors.get(obj.payment_status, '#757575')
+        return format_html(
+            '<span style="background: {}; color: white; padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: bold;">{}</span>',
+            color,
+            obj.get_payment_status_display()
+        )
+    payment_status_badge.short_description = 'Payment Status'
+    payment_status_badge.admin_order_field = 'payment_status'
+    
+    def attended_badge(self, obj):
+        """Display attended status with icon"""
+        if obj.attended:
+            return format_html('<span style="color: green; font-size: 16px;">✓</span>')
+        return format_html('<span style="color: #ccc; font-size: 16px;">—</span>')
+    attended_badge.short_description = 'Attended'
+    attended_badge.admin_order_field = 'attended'
+    
+    def certificate_issued_badge(self, obj):
+        """Display certificate status with icon"""
+        if obj.certificate_issued:
+            return format_html('<span style="color: green; font-size: 16px;">📜</span>')
+        return format_html('<span style="color: #ccc; font-size: 16px;">—</span>')
+    certificate_issued_badge.short_description = 'Certificate'
+    certificate_issued_badge.admin_order_field = 'certificate_issued'
+    
+    def clean(self):
+        """Custom validation for payment requirements"""
+        cleaned_data = super().clean()
+        return cleaned_data
+    
+    def save_model(self, request, obj, form, change):
+        """Validate payment reference for paid events before saving"""
+        # Check if event requires payment
+        if obj.event.payment_required and obj.event.registration_fee > 0:
+            # If payment status is not exempted, require payment reference
+            if obj.payment_status != 'exempted' and not obj.payment_reference:
+                from django.contrib import messages
+                messages.error(
+                    request,
+                    f'Payment reference (UPI ID) is required for paid event "{obj.event.title}". '
+                    f'Registration fee: ₹{obj.event.registration_fee}'
+                )
+                # Prevent saving by raising validation error
+                raise ValidationError(
+                    'Payment reference (UPI Transaction ID) is required for paid events. '
+                    'Please enter the UPI reference ID or mark payment as "Exempted".'
+                )
+        
+        super().save_model(request, obj, form, change)
     
     def mark_as_attended(self, request, queryset):
         queryset.update(attended=True)
@@ -262,6 +330,12 @@ class EventRegistrationAdmin(admin.ModelAdmin):
         queryset.update(payment_status='paid', payment_verified_by=request.user, payment_date=timezone.now())
         self.message_user(request, f'{queryset.count()} payments verified.')
     verify_payment.short_description = 'Verify payment'
+
+
+# EventSchedule is managed through Event inlines only, but EventSpeaker is registered for autocomplete support
+
+
+# EventFeedback removed from admin - feedback managed through event interface
 
 
 @admin.register(Notification)
@@ -309,7 +383,7 @@ class NotificationAdmin(admin.ModelAdmin):
     )
     
     def save_model(self, request, obj, form, change):
-        if not change:
+        if not change:  # If creating new notification
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
     
@@ -365,7 +439,9 @@ class NotificationSettingsAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
     
     def has_add_permission(self, request):
+        # Only allow one settings instance
         return not NotificationSettings.objects.exists()
     
     def has_delete_permission(self, request, obj=None):
+        # Don't allow deletion of settings
         return False
