@@ -163,9 +163,9 @@ class TeamMember(models.Model):
     """Team members for projects"""
     
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='team_members')
-    name = models.CharField(max_length=100)
-    linkedin_url = models.URLField(blank=True, null=True)
-    role = models.CharField(max_length=100, blank=True, null=True, help_text="e.g., Frontend Developer, UI Designer")
+    name = models.CharField(max_length=200)
+    linkedin_url = models.URLField(max_length=500, blank=True, null=True)
+    role = models.CharField(max_length=200, blank=True, null=True, help_text="e.g., Frontend Developer, UI Designer")
     
     created_at = models.DateTimeField(auto_now_add=True)
     
@@ -184,7 +184,7 @@ class ProjectImage(models.Model):
     
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='images')
     image = models.ImageField(upload_to=project_gallery_upload_path, help_text="Upload project image")
-    caption = models.CharField(max_length=200, blank=True, null=True)
+    caption = models.CharField(max_length=500, blank=True, null=True)
     is_featured = models.BooleanField(default=False, help_text="Show as main project image")
     
     created_at = models.DateTimeField(auto_now_add=True)
