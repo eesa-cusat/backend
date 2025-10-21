@@ -39,6 +39,14 @@ def speaker_profile_upload_path(instance, filename):
     return f'events/speakers/{event_title.replace(" ", "_")}/{safe_name.replace(" ", "_")}{ext}'
 
 
+def event_speaker_image_upload_path(instance, filename):
+    """Generate upload path for event speaker images"""
+    import os
+    name, ext = os.path.splitext(filename)
+    safe_title = "".join(c for c in instance.title if c.isalnum() or c in (' ', '-', '_')).rstrip()[:20]
+    return f'event_speakers/{safe_title.replace(" ", "_")}{ext}'
+
+
 class Event(models.Model):
     """Comprehensive Event management - created and managed by staff"""
     
@@ -101,13 +109,6 @@ class Event(models.Model):
     banner_image = models.ImageField(upload_to=event_banner_upload_path, blank=True, null=True)
     event_flyer = models.FileField(upload_to=event_flyer_upload_path, blank=True, null=True)
     
-    # Speaker names (stored as JSON list of names - simple text, no relations)
-    speaker_names = models.JSONField(
-        default=list, 
-        blank=True,
-        help_text="List of speaker names as simple text. Example: ['Dr. John Smith', 'Prof. Jane Doe']"
-    )
-    
     # Management
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_events')
     is_active = models.BooleanField(default=True)
@@ -158,7 +159,7 @@ class Event(models.Model):
     @property
     def registration_count(self):
         return self.registrations.count()
-    
+
     @property
     def spots_remaining(self):
         if not self.max_participants:
@@ -201,7 +202,12 @@ class EventRegistration(models.Model):
     payment_amount = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     payment_verified_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='verified_payments')
     payment_date = models.DateTimeField(blank=True, null=True)
-    payment_reference = models.CharField(max_length=100, blank=True, null=True)
+    payment_reference_id = models.CharField(
+        max_length=100, 
+        blank=True, 
+        null=True,
+        help_text="Payment reference/transaction ID - no validation, frontend handles this"
+    )
     
     # Additional Information
     dietary_requirements = models.TextField(blank=True, null=True)
@@ -222,28 +228,12 @@ class EventRegistration(models.Model):
     def __str__(self):
         return f"{self.name} - {self.event.title}"
     
-    def clean(self):
-        """Validate payment reference for paid events"""
-        from django.core.exceptions import ValidationError
-        
-        # Check if event requires payment
-        if self.event.payment_required and self.event.registration_fee > 0:
-            # If payment status is not exempted, require payment reference
-            if self.payment_status not in ['exempted', 'refunded'] and not self.payment_reference:
-                raise ValidationError({
-                    'payment_reference': f'Payment reference (UPI Transaction ID) is required for this paid event. '
-                                       f'Registration fee: ₹{self.event.registration_fee}. '
-                                       f'Please enter the UPI reference ID or mark payment as "Exempted".'
-                })
-    
     def save(self, *args, **kwargs):
         # Set payment amount from event if not set
         if not self.payment_amount:
             self.payment_amount = self.event.registration_fee
         
-        # Run validation before saving
-        self.clean()
-        
+        # No validation - frontend handles payment_reference_id validation
         super().save(*args, **kwargs)
 
 
@@ -252,7 +242,7 @@ class EventSpeaker(models.Model):
     
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='speakers')
     name = models.CharField(max_length=200)
-    title = models.CharField(max_length=200, help_text="e.g., CEO, Professor, etc.")
+    designation = models.CharField(max_length=200, help_text="e.g., CEO, Professor, etc.")
     organization = models.CharField(max_length=200)
     bio = models.TextField(blank=True, null=True)
     profile_image = models.ImageField(upload_to=speaker_profile_upload_path, blank=True, null=True)
@@ -261,11 +251,6 @@ class EventSpeaker(models.Model):
     linkedin_url = models.URLField(blank=True, null=True)
     twitter_url = models.URLField(blank=True, null=True)
     website_url = models.URLField(blank=True, null=True)
-    
-    # Talk Details
-    talk_title = models.CharField(max_length=200, blank=True, null=True)
-    talk_abstract = models.TextField(blank=True, null=True)
-    talk_duration = models.PositiveIntegerField(blank=True, null=True, help_text="Duration in minutes")
     
     order = models.PositiveIntegerField(default=0, help_text="Order in which speakers appear")
     

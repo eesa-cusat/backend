@@ -3,69 +3,36 @@ from django.utils.html import format_html
 from django.db.models import Count
 from django.http import HttpResponse
 from django.utils import timezone
-from django import forms
 
 import csv
-from .models import Event, EventRegistration, EventSchedule, Notification, NotificationSettings
+from .models import Event, EventRegistration, EventSpeaker, EventSchedule, Notification, NotificationSettings
 
 
-# Custom form for adding speakers as simple text list
-class EventAdminForm(forms.ModelForm):
-    speaker_names = forms.CharField(
-        required=False,
-        widget=forms.Textarea(attrs={'rows': 3, 'cols': 40}),
-        help_text="Enter speaker names, one per line. Example:<br>Dr. John Smith<br>Prof. Jane Doe<br>Alice Johnson",
-        label="Speaker Names"
-    )
-    
-    class Meta:
-        model = Event
-        fields = '__all__'
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Pre-fill speaker names from JSON
-        if self.instance and self.instance.pk and self.instance.speaker_names:
-            self.fields['speaker_names'].initial = '\n'.join(self.instance.speaker_names)
-    
-    def save(self, commit=True):
-        instance = super().save(commit=False)
-        
-        # Convert textarea input to JSON list
-        speaker_text = self.cleaned_data.get('speaker_names', '')
-        if speaker_text:
-            # Split by newlines and filter empty strings
-            speakers_list = [s.strip() for s in speaker_text.split('\n') if s.strip()]
-            instance.speaker_names = speakers_list
-        else:
-            instance.speaker_names = []
-        
-        if commit:
-            instance.save()
-        return instance
+class EventSpeakerInline(admin.TabularInline):
+    model = EventSpeaker
+    extra = 1
+    fields = ['name', 'designation', 'organization', 'bio', 'profile_image', 'linkedin_url', 'order']
 
 
 class EventScheduleInline(admin.TabularInline):
     model = EventSchedule
-    extra = 1
+    extra = 0
     fields = ['title', 'description', 'speaker_name', 'schedule_date', 'start_time', 'end_time', 'venue_details']
 
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
-    form = EventAdminForm
-    
     list_display = [
         'title', 'event_type', 'start_date_formatted', 'status', 'registration_count',
-        'is_upcoming_indicator', 'is_featured_indicator', 'created_by'
+        'is_upcoming_indicator', 'is_featured_indicator', 'online_link_display', 'created_by'
     ]
     list_filter = [
         'event_type', 'status', 'is_featured', 'is_active', 'start_date', 'registration_required',
         'payment_required', 'created_by'
     ]
     search_fields = ['title', 'description', 'location', 'venue']
-    readonly_fields = ['created_by', 'created_at', 'updated_at', 'spots_remaining']
-    inlines = [EventScheduleInline]
+    readonly_fields = ['created_by', 'created_at', 'updated_at', 'spots_remaining', 'meeting_link_display']
+    inlines = [EventSpeakerInline, EventScheduleInline]
     actions = ['mark_as_featured', 'mark_as_published', 'mark_as_cancelled', 'export_registrations_csv']
     
     fieldsets = (
@@ -76,11 +43,7 @@ class EventAdmin(admin.ModelAdmin):
             'fields': ('start_date', 'end_date', 'registration_deadline')
         }),
         ('Location', {
-            'fields': ('location', 'venue', 'address', 'is_online', 'meeting_link')
-        }),
-        ('Speakers', {
-            'fields': ('speaker_names',),
-            'description': 'Add speaker names as plain text (one per line). These names can be used when creating schedules.'
+            'fields': ('location', 'venue', 'address', 'is_online', 'meeting_link', 'meeting_link_display')
         }),
         ('Registration Settings', {
             'fields': ('registration_required', 'max_participants', 'spots_remaining')
@@ -127,6 +90,24 @@ class EventAdmin(admin.ModelAdmin):
             return format_html('<span style="color: gold;">⭐ Featured</span>')
         return '—'
     is_featured_indicator.short_description = 'Featured'
+    
+    def online_link_display(self, obj):
+        if obj.is_online and obj.meeting_link:
+            return format_html('<a href="{}" target="_blank" style="color: #0066cc;">🔗 Join Meeting</a>', obj.meeting_link)
+        elif obj.is_online:
+            return format_html('<span style="color: orange;">📡 Online (No link)</span>')
+        return '—'
+    online_link_display.short_description = 'Online Event'
+    
+    def meeting_link_display(self, obj):
+        """Display meeting link in detail view with a button"""
+        if obj.meeting_link:
+            return format_html(
+                '<a href="{}" target="_blank" class="button" style="padding: 10px 15px; background-color: #0066cc; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">🔗 Join Meeting</a>',
+                obj.meeting_link
+            )
+        return format_html('<span style="color: #999;">No meeting link provided</span>')
+    meeting_link_display.short_description = 'Quick Access'
     
     def registration_count(self, obj):
         count = getattr(obj, 'registration_count_annotation', None)

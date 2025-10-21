@@ -3,13 +3,12 @@ from .models import Event, EventRegistration, EventSpeaker, EventSchedule, Event
 
 
 class EventSpeakerSerializer(serializers.ModelSerializer):
-    """Keep for backwards compatibility with existing EventSpeaker records"""
+    """Serializer for event speakers"""
     class Meta:
         model = EventSpeaker
         fields = [
-            'id', 'name', 'title', 'organization', 'bio', 'profile_image',
-            'linkedin_url', 'twitter_url', 'website_url',
-            'talk_title', 'talk_abstract', 'talk_duration', 'order'
+            'id', 'name', 'designation', 'organization', 'bio', 'profile_image',
+            'linkedin_url', 'twitter_url', 'website_url', 'order'
         ]
 
 
@@ -27,16 +26,11 @@ class EventScheduleSerializer(serializers.ModelSerializer):
 
 class EventSerializer(serializers.ModelSerializer):
     # Support both old EventSpeaker FK (for backwards compatibility) and new speaker_names JSON
-    speakers = EventSpeakerSerializer(many=True, read_only=True)  # Old FK relation
-    speaker_names = serializers.ListField(child=serializers.CharField(), read_only=True)  # New JSON field
+    speakers = EventSpeakerSerializer(many=True, read_only=True)
     
     schedule = EventScheduleSerializer(many=True, read_only=True)
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
-    
-    # Gallery album with nested photos
     album = serializers.SerializerMethodField()
-    
-    # Dynamic properties
     is_upcoming = serializers.ReadOnlyField()
     is_past = serializers.ReadOnlyField()
     is_ongoing = serializers.ReadOnlyField()
@@ -57,7 +51,7 @@ class EventSerializer(serializers.ModelSerializer):
             'banner_image', 'event_flyer',
             'is_active', 'is_featured',
             'created_by_name', 'created_at', 'updated_at',
-            'speakers', 'speaker_names', 'schedule', 'album',  # Include both speakers fields
+            'speakers', 'schedule', 'album',
             'is_upcoming', 'is_past', 'is_ongoing', 'is_registration_open',
             'registration_count', 'spots_remaining'
         ]
@@ -69,6 +63,16 @@ class EventSerializer(serializers.ModelSerializer):
             # Import here to avoid circular import
             from gallery.serializers import AlbumSerializer
             return AlbumSerializer(obj.album, context=self.context).data
+        return None
+    
+    def get_linked_gallery_album(self, obj):
+        """Get linked gallery album basic info if available"""
+        if obj.linked_gallery_album:
+            return {
+                'id': obj.linked_gallery_album.id,
+                'slug': obj.linked_gallery_album.slug,
+                'title': obj.linked_gallery_album.title
+            }
         return None
 
 
@@ -119,7 +123,7 @@ class EventRegistrationSerializer(serializers.ModelSerializer):
             'institution', 'department', 'year_of_study',
             'organization', 'designation',
             'payment_status', 'payment_status_display', 'payment_amount',
-            'payment_date', 'payment_reference',
+            'payment_date', 'payment_reference_id',
             'dietary_requirements', 'special_needs',
             'attended', 'certificate_issued',
             'registered_at', 'updated_at'
