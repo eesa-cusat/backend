@@ -121,4 +121,7 @@ CLOUDINARY_API_SECRET=*
 EMAIL_HOST_PASSWORD=*
 AWS_SECRET_ACCESS_KEY=*
 
-*.md
+# Keep deployment guides, ignore temp documentation
+test_heroku.sh
+
+*md

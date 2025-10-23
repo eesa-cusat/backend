@@ -50,7 +50,7 @@ if DEBUG:
     ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', '*']
 else:
     ALLOWED_HOSTS = get_list_from_env('ALLOWED_HOSTS', 
-        'eesacusat.in,www.eesacusat.in,*.eesacusat.in,*.onrender.com,eesabackend.onrender.com,*.railway.app,*.herokuapp.com,*.supabase.co'
+        'eesacusat.in,www.eesacusat.in,*.eesacusat.in,*.herokuapp.com,*.supabase.co'
     )
 
 # Application definition
@@ -133,9 +133,33 @@ if DEBUG:
         }
     }
 else:
-    # Production: PostgreSQL/Supabase with optimization
-    if all([os.environ.get('DB_PASSWORD'), os.environ.get('DB_HOST')]):
-        print("🗄️ Using PostgreSQL/Supabase for production")
+    # Production: Try Heroku DATABASE_URL first, then fallback to manual config
+    database_url = os.environ.get('DATABASE_URL')
+    
+    if database_url:
+        # Heroku provides DATABASE_URL - use dj-database-url for parsing
+        print("🗄️ Using Heroku PostgreSQL (DATABASE_URL)")
+        import dj_database_url
+        DATABASES = {
+            'default': dj_database_url.config(
+                default=database_url,
+                conn_max_age=600,
+                conn_health_checks=True,
+                ssl_require=True
+            )
+        }
+        # Add additional PostgreSQL optimizations
+        DATABASES['default']['OPTIONS'] = {
+            'sslmode': 'require',
+            'application_name': 'eesa_backend',
+            'connect_timeout': 10,
+            'options': '-c default_transaction_isolation=read_committed'
+        }
+        DATABASES['default']['ATOMIC_REQUESTS'] = False
+        DATABASES['default']['AUTOCOMMIT'] = True
+    elif all([os.environ.get('DB_PASSWORD'), os.environ.get('DB_HOST')]):
+        # Manual PostgreSQL configuration (Supabase, etc.)
+        print("🗄️ Using PostgreSQL/Supabase (manual config)")
         DATABASES = {
             'default': {
                 'ENGINE': 'django.db.backends.postgresql',

@@ -1,0 +1,76 @@
+{
+  "name": "EESA College Portal Backend",
+  "description": "Django REST API backend for Electronics Engineering Student Association (EESA) portal",
+  "repository": "https://github.com/eesa-cusat/backend",
+  "keywords": ["python", "django", "rest-api", "postgresql", "cloudinary"],
+  "stack": "heroku-22",
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ],
+  "env": {
+    "DEBUG": {
+      "description": "Django debug mode (should be False in production)",
+      "value": "False",
+      "required": true
+    },
+    "SECRET_KEY": {
+      "description": "Django secret key for cryptographic signing",
+      "generator": "secret",
+      "required": true
+    },
+    "ALLOWED_HOSTS": {
+      "description": "Comma-separated list of allowed hosts",
+      "value": ".herokuapp.com,eesacusat.in,www.eesacusat.in",
+      "required": true
+    },
+    "DJANGO_SETTINGS_MODULE": {
+      "description": "Django settings module",
+      "value": "eesa_backend.settings",
+      "required": true
+    },
+    "CLOUDINARY_CLOUD_NAME": {
+      "description": "Cloudinary cloud name for media storage",
+      "required": true
+    },
+    "CLOUDINARY_API_KEY": {
+      "description": "Cloudinary API key",
+      "required": true
+    },
+    "CLOUDINARY_API_SECRET": {
+      "description": "Cloudinary API secret",
+      "required": true
+    },
+    "CORS_ALLOWED_ORIGINS": {
+      "description": "Comma-separated list of allowed CORS origins",
+      "value": "https://eesacusat.in,https://www.eesacusat.in",
+      "required": false
+    },
+    "CSRF_TRUSTED_ORIGINS": {
+      "description": "Comma-separated list of trusted CSRF origins",
+      "value": "https://eesacusat.in,https://www.eesacusat.in",
+      "required": false
+    },
+    "DISABLE_COLLECTSTATIC": {
+      "description": "Disable collectstatic during build (we handle it in release phase)",
+      "value": "1",
+      "required": true
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "eco"
+    }
+  },
+  "addons": [
+    {
+      "plan": "heroku-postgresql:essential-0",
+      "as": "DATABASE"
+    }
+  ],
+  "scripts": {
+    "postdeploy": "python manage.py collectstatic --noinput"
+  }
+}
