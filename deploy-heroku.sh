@@ -4,89 +4,71 @@
 # This script automates the Heroku deployment process
 # Run from: /Users/afsalkalladi/Pictures/both/backend
 
-set -e  # Exit on any error
-
-echo "🚀 EESA Backend - Heroku Deployment Wizard"
-echo "=========================================="
-echo ""
-
-# Color codes
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m' # No Color
-
-# Check if we're in the right directory
-if [ ! -f "manage.py" ]; then
-    echo -e "${RED}❌ Error: Please run this script from the backend directory${NC}"
-    exit 1
-fi
-
-# Check if Heroku CLI is installed
-if ! command -v heroku &> /dev/null; then
-    echo -e "${RED}❌ Heroku CLI not found. Installing...${NC}"
-    echo "Run: brew install heroku"
-    exit 1
-fi
-
-echo -e "${GREEN}✅ Heroku CLI found${NC}"
-
-# Check if logged in to Heroku
-if ! heroku auth:whoami &> /dev/null; then
-    echo -e "${YELLOW}⚠️  Not logged in to Heroku${NC}"
-    echo "Please login:"
-    heroku login
-fi
-
-echo -e "${GREEN}✅ Logged in to Heroku as $(heroku auth:whoami)${NC}"
-echo ""
-
-# Prompt for app name
-echo "📝 Step 1: App Configuration"
-echo "----------------------------"
-read -p "Enter Heroku app name (e.g., eesa-backend): " APP_NAME
-
-if [ -z "$APP_NAME" ]; then
-    echo -e "${RED}❌ App name is required${NC}"
-    exit 1
-fi
-
-# Check if app already exists
-if heroku apps:info --app $APP_NAME &> /dev/null; then
-    echo -e "${YELLOW}⚠️  App '$APP_NAME' already exists${NC}"
-    read -p "Use existing app? (y/n): " USE_EXISTING
-    if [ "$USE_EXISTING" != "y" ]; then
-        exit 1
     fi
 else
     echo "Creating new Heroku app: $APP_NAME"
+
     heroku create $APP_NAME
 fi
 
 echo -e "${GREEN}✅ App ready: $APP_NAME${NC}"
 echo ""
 
-# Add PostgreSQL
+# Database setup
 echo "🗄️  Step 2: Database Setup"
 echo "-------------------------"
+echo ""
+echo "Choose database option:"
+echo "  1. Use existing Supabase database (recommended, no extra cost)"
+echo "  2. Create new Heroku PostgreSQL addon (\$5/month)"
+echo ""
+read -p "Your choice (1 or 2): " DB_CHOICE
 
-# Check if PostgreSQL addon exists
-if heroku addons --app $APP_NAME | grep -q "heroku-postgresql"; then
-    echo -e "${YELLOW}⚠️  PostgreSQL addon already exists${NC}"
+if [ "$DB_CHOICE" == "1" ]; then
+    # Use Supabase
+    echo ""
+    echo "📋 Supabase Database Configuration"
+    echo "Get these values from: Supabase Dashboard → Settings → Database"
+    echo ""
+    
+    read -p "Database Name (usually 'postgres'): " SUPABASE_DB_NAME
+    read -p "Database User: " SUPABASE_DB_USER
+    read -sp "Database Password: " SUPABASE_DB_PASSWORD
+    echo ""
+    read -p "Database Host (e.g., db.xxx.supabase.co): " SUPABASE_DB_HOST
+    read -p "Database Port (usually 5432): " SUPABASE_DB_PORT
+    
+    # Set environment variables
+    heroku config:set DB_NAME="${SUPABASE_DB_NAME:-postgres}" --app $APP_NAME
+    heroku config:set DB_USER="$SUPABASE_DB_USER" --app $APP_NAME
+    heroku config:set DB_PASSWORD="$SUPABASE_DB_PASSWORD" --app $APP_NAME
+    heroku config:set DB_HOST="$SUPABASE_DB_HOST" --app $APP_NAME
+    heroku config:set DB_PORT="${SUPABASE_DB_PORT:-5432}" --app $APP_NAME
+    
+    echo -e "${GREEN}✅ Supabase database configured${NC}"
+    echo "Your app will connect to existing Supabase database"
+    
 else
-    echo "Adding PostgreSQL addon..."
-    read -p "Choose plan (1=essential-0 \$5/month, 2=mini free but limited): " DB_PLAN
-    
-    if [ "$DB_PLAN" == "1" ]; then
-        heroku addons:create heroku-postgresql:essential-0 --app $APP_NAME
+    # Use Heroku PostgreSQL
+    if heroku addons --app $APP_NAME | grep -q "heroku-postgresql"; then
+        echo -e "${YELLOW}⚠️  PostgreSQL addon already exists${NC}"
     else
-        heroku addons:create heroku-postgresql:mini --app $APP_NAME
+        echo "Adding PostgreSQL addon..."
+        read -p "Choose plan (1=essential-0 \$5/month, 2=mini free but limited): " DB_PLAN
+        
+        if [ "$DB_PLAN" == "1" ]; then
+            heroku addons:create heroku-postgresql:essential-0 --app $APP_NAME
+        else
+            heroku addons:create heroku-postgresql:mini --app $APP_NAME
+        fi
+        
+        echo "Waiting for database to provision..."
+        sleep 5
+        echo -e "${GREEN}✅ Heroku PostgreSQL configured${NC}"
     fi
-    
-    echo "Waiting for database to provision..."
-    sleep 5
 fi
 
+echo ""
 echo -e "${GREEN}✅ Database ready${NC}"
 echo ""
 

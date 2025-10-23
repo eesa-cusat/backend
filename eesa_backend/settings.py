@@ -123,7 +123,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'eesa_backend.wsgi.application'
 
-# Database configuration - PostgreSQL for production, SQLite for development
+# Database configuration - Supabase PostgreSQL for production, SQLite for development
 if DEBUG:
     print("🗄️ Using SQLite for development")
     DATABASES = {
@@ -133,61 +133,28 @@ if DEBUG:
         }
     }
 else:
-    # Production: Try Heroku DATABASE_URL first, then fallback to manual config
-    database_url = os.environ.get('DATABASE_URL')
-    
-    if database_url:
-        # Heroku provides DATABASE_URL - use dj-database-url for parsing
-        print("🗄️ Using Heroku PostgreSQL (DATABASE_URL)")
-        import dj_database_url
-        DATABASES = {
-            'default': dj_database_url.config(
-                default=database_url,
-                conn_max_age=600,
-                conn_health_checks=True,
-                ssl_require=True
-            )
+    # Production: Use Supabase PostgreSQL
+    print("🗄️ Using Supabase PostgreSQL")
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('DB_NAME', 'postgres'),
+            'USER': os.environ.get('DB_USER', 'postgres'),
+            'PASSWORD': os.environ.get('DB_PASSWORD'),
+            'HOST': os.environ.get('DB_HOST'),
+            'PORT': os.environ.get('DB_PORT', '5432'),
+            'OPTIONS': {
+                'sslmode': 'require',
+                'application_name': 'eesa_backend',
+                'connect_timeout': 10,
+                'options': '-c default_transaction_isolation=read_committed'
+            },
+            'CONN_MAX_AGE': 600,
+            'CONN_HEALTH_CHECKS': True,
+            'ATOMIC_REQUESTS': False,
+            'AUTOCOMMIT': True,
         }
-        # Add additional PostgreSQL optimizations
-        DATABASES['default']['OPTIONS'] = {
-            'sslmode': 'require',
-            'application_name': 'eesa_backend',
-            'connect_timeout': 10,
-            'options': '-c default_transaction_isolation=read_committed'
-        }
-        DATABASES['default']['ATOMIC_REQUESTS'] = False
-        DATABASES['default']['AUTOCOMMIT'] = True
-    elif all([os.environ.get('DB_PASSWORD'), os.environ.get('DB_HOST')]):
-        # Manual PostgreSQL configuration (Supabase, etc.)
-        print("🗄️ Using PostgreSQL/Supabase (manual config)")
-        DATABASES = {
-            'default': {
-                'ENGINE': 'django.db.backends.postgresql',
-                'NAME': os.environ.get('DB_NAME', 'postgres'),
-                'USER': os.environ.get('DB_USER', 'postgres'),
-                'PASSWORD': os.environ.get('DB_PASSWORD'),
-                'HOST': os.environ.get('DB_HOST'),
-                'PORT': os.environ.get('DB_PORT', '5432'),
-                'OPTIONS': {
-                    'sslmode': 'require',
-                    'application_name': 'eesa_backend',
-                    'connect_timeout': 10,
-                    'options': '-c default_transaction_isolation=read_committed'
-                },
-                'CONN_MAX_AGE': 600,
-                'CONN_HEALTH_CHECKS': True,
-                'ATOMIC_REQUESTS': False,
-                'AUTOCOMMIT': True,
-            }
-        }
-    else:
-        print("⚠️ PostgreSQL not configured, falling back to SQLite")
-        DATABASES = {
-            'default': {
-                'ENGINE': 'django.db.backends.sqlite3',
-                'NAME': BASE_DIR / 'db.sqlite3',
-            }
-        }
+    }
 
 # Cloudinary configuration
 CLOUDINARY_CONFIG = {
