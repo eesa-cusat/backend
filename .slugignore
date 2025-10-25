@@ -1,53 +1,74 @@
-# Files to exclude from Heroku slug (reduces size)
+# Files to exclude from Heroku slug (reduces size and saves dyno hours)
+# Documentation
+docs/
 *.md
 !README.md
+
+# Development files
+.venv/
+venv/
+.env.development
+.env.production.template
+db.sqlite3*
 *.backup
 *.log
-db.sqlite3*
-.venv/
+
+# Git
 .git/
 .github/
+.gitignore
+
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
-pip-log.txt
-pip-delete-this-directory.txt
+*.py[cod]
+*$py.class
+
+# Testing
+.pytest_cache/
 .tox/
 .coverage
 .coverage.*
-.cache
 nosetests.xml
 coverage.xml
 *.cover
-*.mo
-*.pot
-logs/
+.hypothesis/
+
+# Build/Distribution
+build/
+dist/
+*.egg-info/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local media/static (use Cloudinary in production)
 media/
 staticfiles/
+
+# Logs
+logs/
+*.log
+
+# Scripts (not needed in production)
+scripts/
+
+# Removed deployment configs
 render.yaml
 docker-compose*.yml
 Dockerfile
+.dockerignore
 deploy*.sh
-scripts/
-ADMIN_PANEL_*.md
-COMPLETE_*.md
-DATABASE_*.md
-DEPLOY_*.md
-DEVELOPMENT_*.md
-EC2_*.md
-EESA_*.md
-EVENT_*.md
-EVENTS_*.md
-FIX_*.md
-FRONTEND_*.md
-GALLERY_*.md
-HEROKU_*.md
-OPTIMIZED_*.md
-POSTGRESQL_*.md
-POSTMAN_*.md
-PRODUCTION_*.md
-PROJECTS_*.md
-RUN_*.md
-SIMPLIFIED_*.md
