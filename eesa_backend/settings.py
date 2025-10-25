@@ -196,11 +196,11 @@ else:
                 "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
             },
             "staticfiles": {
-                "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+                "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
             },
         }
         # Legacy setting for django-cloudinary-storage compatibility
-        STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+        STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
     else:
         print("⚠️ Cloudinary not configured, using local storage")
         STORAGES = {
@@ -208,10 +208,10 @@ else:
                 "BACKEND": "django.core.files.storage.FileSystemStorage",
             },
             "staticfiles": {
-                "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+                "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
             },
         }
-        STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+        STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
     
     STATIC_URL = '/static/'
     STATIC_ROOT = BASE_DIR / 'staticfiles'
