@@ -133,7 +133,7 @@ if DEBUG:
         }
     }
 else:
-    # Production: Use Supabase PostgreSQL
+    # Production: Use Supabase PostgreSQL with strict limits
     print("🗄️ Using Supabase PostgreSQL")
     DATABASES = {
         'default': {
@@ -146,15 +146,21 @@ else:
             'OPTIONS': {
                 'sslmode': 'require',
                 'application_name': 'eesa_backend',
-                'connect_timeout': 10,
-                'options': '-c default_transaction_isolation=read_committed'
+                'connect_timeout': 10,  # Timeout connection attempts quickly
+                'options': '-c default_transaction_isolation=read_committed -c statement_timeout=30000'  # 30s query timeout
             },
-            'CONN_MAX_AGE': 600,
+            'CONN_MAX_AGE': 600,  # Connection pooling (10 min)
             'CONN_HEALTH_CHECKS': True,
             'ATOMIC_REQUESTS': False,
             'AUTOCOMMIT': True,
+            # Limit max connections to prevent connection pool exhaustion attacks
+            'POOL_OPTIONS': {
+                'MAX_OVERFLOW': 5,  # Max overflow connections
+                'POOL_SIZE': 5,     # Base pool size (total 10 connections max)
+            }
         }
     }
+    print("🛡️ Database: Connection pooling enabled, 30s query timeout")
 
 # Cloudinary configuration
 CLOUDINARY_CONFIG = {
@@ -221,10 +227,19 @@ if not DEBUG and all(CLOUDINARY_CONFIG.values()):
         'STATIC_TAG': 'eesa_backend_static',
     }
 
-# File upload settings
-FILE_UPLOAD_MAX_MEMORY_SIZE = 15 * 1024 * 1024  # 15MB
-DATA_UPLOAD_MAX_MEMORY_SIZE = 15 * 1024 * 1024  # 15MB
+# File upload settings - Strict limits to prevent abuse
+FILE_UPLOAD_MAX_MEMORY_SIZE = 15 * 1024 * 1024  # 15MB max file size
+DATA_UPLOAD_MAX_MEMORY_SIZE = 15 * 1024 * 1024  # 15MB max request size
 FILE_UPLOAD_PERMISSIONS = 0o644
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 1000  # Limit form fields (prevent memory attacks)
+
+# Additional security: Request size limits (prevent large payload attacks)
+if not DEBUG:
+    # Production: Strict limits
+    FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB in production
+    DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+    DATA_UPLOAD_MAX_NUMBER_FIELDS = 500  # Stricter in production
+    print("🛡️ File upload limits: 10MB max, 500 max fields")
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -280,18 +295,24 @@ REST_FRAMEWORK = {
     'DEFAULT_METADATA_CLASS': 'rest_framework.metadata.SimpleMetadata',
 }
 
-# Add throttling for production
+# Security: Rate limiting and throttling to prevent abuse and overbilling attacks
 if not DEBUG:
     REST_FRAMEWORK.update({
         'DEFAULT_THROTTLE_CLASSES': [
             'rest_framework.throttling.AnonRateThrottle',
             'rest_framework.throttling.UserRateThrottle',
+            'rest_framework.throttling.ScopedRateThrottle',
         ],
         'DEFAULT_THROTTLE_RATES': {
-            'anon': '100/hour',
-            'user': '1000/hour',
+            # Strict limits to prevent DDoS and cost attacks
+            'anon': '100/hour',          # Anonymous users: 100 requests/hour
+            'user': '1000/hour',         # Authenticated users: 1000 requests/hour
+            'burst': '20/minute',        # Burst protection: 20/minute
+            'upload': '10/hour',         # File uploads: 10/hour
+            'expensive': '10/hour',      # Expensive operations: 10/hour
         },
     })
+    print("🛡️ Production rate limiting enabled (100/hr anon, 1000/hr user)")
 
 # CORS and CSRF configuration - FIXED: Better handling
 if DEBUG:
@@ -418,13 +439,10 @@ print(f"🛡️ CSRF_COOKIE_SECURE: {globals().get('CSRF_COOKIE_SECURE', 'NOT SE
 if not DEBUG:
     print(f"🔐 SECURE_PROXY_SSL_HEADER: {globals().get('SECURE_PROXY_SSL_HEADER', 'NOT SET')}")
 
-# Admin site customization - Minimal for production use with separate frontend
+# Admin site customization - Django admin only (no separate frontend admin)
 ADMIN_SITE_HEADER = f"EESA Backend API Administration ({ENVIRONMENT.title()})"
 ADMIN_SITE_TITLE = "EESA API Admin"
 ADMIN_INDEX_TITLE = f"EESA Backend API Management - {ENVIRONMENT.title()}"
-
-# Disable admin interface in production if using separate frontend admin
-USE_ADMIN_INTERFACE = DEBUG or os.environ.get('ENABLE_ADMIN_INTERFACE', 'False').lower() == 'true'
 
 # Logging configuration
 LOGGING = {
