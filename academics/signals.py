@@ -71,7 +71,7 @@ def invalidate_notes_cache_on_delete(sender, instance, **kwargs):
 def create_permission_groups(sender, **kwargs):
     """
     Automatically create permission groups after migrations
-    This ensures groups exist in production without manual command execution
+    Creates 6 role-based permission groups for EESA system
     """
     # Only run for academics app
     if sender.name != 'academics':
@@ -81,50 +81,59 @@ def create_permission_groups(sender, **kwargs):
     
     try:
         # Group 1: Events & Gallery Manager
+        # ALL permissions for events and gallery modules
         events_gallery_group, created = Group.objects.get_or_create(
             name='Events & Gallery Manager'
         )
-        if created or not events_gallery_group.permissions.exists():
-            events_perms = Permission.objects.filter(content_type__app_label='events')
-            gallery_perms = Permission.objects.filter(content_type__app_label='gallery')
-            events_gallery_group.permissions.set(list(events_perms) + list(gallery_perms))
-            print(f'  ✓ {"Created" if created else "Updated"} Events & Gallery Manager')
+        events_perms = Permission.objects.filter(content_type__app_label='events')
+        gallery_perms = Permission.objects.filter(content_type__app_label='gallery')
+        events_gallery_group.permissions.set(list(events_perms) + list(gallery_perms))
+        print(f'  ✓ Events & Gallery Manager: {events_gallery_group.permissions.count()} permissions')
         
         # Group 2: Academics & Projects Manager
+        # ALL permissions for academics and projects modules
         academics_projects_group, created = Group.objects.get_or_create(
             name='Academics & Projects Manager'
         )
-        if created or not academics_projects_group.permissions.exists():
-            academics_perms = Permission.objects.filter(content_type__app_label='academics')
-            projects_perms = Permission.objects.filter(content_type__app_label='projects')
-            academics_projects_group.permissions.set(list(academics_perms) + list(projects_perms))
-            print(f'  ✓ {"Created" if created else "Updated"} Academics & Projects Manager')
+        academics_perms = Permission.objects.filter(content_type__app_label='academics')
+        projects_perms = Permission.objects.filter(content_type__app_label='projects')
+        academics_projects_group.permissions.set(list(academics_perms) + list(projects_perms))
+        print(f'  ✓ Academics & Projects Manager: {academics_projects_group.permissions.count()} permissions')
         
         # Group 3: Careers & Placements Manager
+        # ALL permissions for careers and placements modules
         careers_placements_group, created = Group.objects.get_or_create(
             name='Careers & Placements Manager'
         )
-        if created or not careers_placements_group.permissions.exists():
-            careers_perms = Permission.objects.filter(content_type__app_label='careers')
-            placements_perms = Permission.objects.filter(content_type__app_label='placements')
-            careers_placements_group.permissions.set(list(careers_perms) + list(placements_perms))
-            print(f'  ✓ {"Created" if created else "Updated"} Careers & Placements Manager')
+        careers_perms = Permission.objects.filter(content_type__app_label='careers')
+        placements_perms = Permission.objects.filter(content_type__app_label='placements')
+        careers_placements_group.permissions.set(list(careers_perms) + list(placements_perms))
+        print(f'  ✓ Careers & Placements Manager: {careers_placements_group.permissions.count()} permissions')
         
-        # Group 4: Teacher (all except accounts)
+        # Group 4: Alumni Manager
+        # ALL permissions for alumni module + gallery permissions (for batch photo uploads)
+        alumni_group, created = Group.objects.get_or_create(name='Alumni Manager')
+        alumni_perms = Permission.objects.filter(content_type__app_label='alumni')
+        # Alumni can upload batch photos to gallery
+        gallery_perms_for_alumni = Permission.objects.filter(content_type__app_label='gallery')
+        alumni_group.permissions.set(list(alumni_perms) + list(gallery_perms_for_alumni))
+        print(f'  ✓ Alumni Manager: {alumni_group.permissions.count()} permissions (includes gallery access)')
+        
+        # Group 5: Teacher
+        # ALL permissions EXCEPT accounts (auth, accounts modules)
         teacher_group, created = Group.objects.get_or_create(name='Teacher')
-        if created or not teacher_group.permissions.exists():
-            all_perms = Permission.objects.exclude(
-                content_type__app_label__in=['auth', 'accounts', 'contenttypes', 'sessions']
-            )
-            teacher_group.permissions.set(all_perms)
-            print(f'  ✓ {"Created" if created else "Updated"} Teacher (all permissions except accounts)')
+        teacher_perms = Permission.objects.exclude(
+            content_type__app_label__in=['auth', 'accounts', 'contenttypes', 'sessions', 'admin']
+        )
+        teacher_group.permissions.set(teacher_perms)
+        print(f'  ✓ Teacher: {teacher_group.permissions.count()} permissions (all except accounts)')
         
-        # Group 5: Admin (full access)
+        # Group 6: Admin
+        # FULL ACCESS to everything including user/account management
         admin_group, created = Group.objects.get_or_create(name='Admin')
-        if created or not admin_group.permissions.exists():
-            all_perms = Permission.objects.all()
-            admin_group.permissions.set(all_perms)
-            print(f'  ✓ {"Created" if created else "Updated"} Admin (full access)')
+        all_perms = Permission.objects.all()
+        admin_group.permissions.set(all_perms)
+        print(f'  ✓ Admin: {admin_group.permissions.count()} permissions (full access)')
         
         print('✅ Permission groups setup completed!\n')
         

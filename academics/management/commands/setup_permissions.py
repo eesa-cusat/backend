@@ -6,8 +6,9 @@ Groups Created:
 1. Events & Gallery Manager - Manage events and gallery
 2. Academics & Projects Manager - Manage academics and projects
 3. Careers & Placements Manager - Manage careers and placements
-4. Teacher - All permissions except account management
-5. Admin - Full access including accounts
+4. Alumni Manager - Manage alumni + gallery access for batch photos
+5. Teacher - All permissions except account management
+6. Admin - Full access including accounts
 
 Usage:
     python manage.py setup_permissions
@@ -41,6 +42,7 @@ class Command(BaseCommand):
                 'Events & Gallery Manager',
                 'Academics & Projects Manager',
                 'Careers & Placements Manager',
+                'Alumni Manager',
                 'Teacher',
                 'Admin'
             ]).delete()
@@ -50,6 +52,7 @@ class Command(BaseCommand):
         self.create_events_gallery_manager()
         self.create_academics_projects_manager()
         self.create_careers_placements_manager()
+        self.create_alumni_manager()
         self.create_teacher_group()
         self.create_admin_group()
 
@@ -126,15 +129,40 @@ class Command(BaseCommand):
         ))
         self._display_permissions(group)
 
+    def create_alumni_manager(self):
+        """Create Alumni Manager group - includes gallery access for batch photos"""
+        self.stdout.write('\n🎓 Creating Alumni Manager group...')
+        
+        group, created = Group.objects.get_or_create(name='Alumni Manager')
+        
+        # Get all permissions for alumni app
+        alumni_permissions = Permission.objects.filter(
+            content_type__app_label='alumni'
+        )
+        # Alumni needs gallery permissions to upload batch photos
+        gallery_permissions = Permission.objects.filter(
+            content_type__app_label='gallery'
+        )
+        
+        # Add permissions
+        group.permissions.set(list(alumni_permissions) + list(gallery_permissions))
+        
+        self.stdout.write(self.style.SUCCESS(
+            f'  ✓ {"Created" if created else "Updated"} Alumni Manager '
+            f'({alumni_permissions.count() + gallery_permissions.count()} permissions)'
+        ))
+        self.stdout.write('  📋 Includes gallery access for batch photo uploads')
+        self._display_permissions(group)
+
     def create_teacher_group(self):
         """Create Teacher group - all permissions except account management"""
         self.stdout.write('\n👨‍🏫 Creating Teacher group...')
         
         group, created = Group.objects.get_or_create(name='Teacher')
         
-        # Get all permissions EXCEPT accounts app
+        # Get all permissions EXCEPT auth, accounts, admin modules
         all_permissions = Permission.objects.exclude(
-            content_type__app_label__in=['auth', 'accounts', 'contenttypes', 'sessions']
+            content_type__app_label__in=['auth', 'accounts', 'contenttypes', 'sessions', 'admin']
         )
         
         # Add permissions
@@ -145,7 +173,7 @@ class Command(BaseCommand):
             f'({all_permissions.count()} permissions)'
         ))
         self.stdout.write('  📋 Includes: academics, alumni, careers, events, gallery, placements, projects')
-        self.stdout.write('  🚫 Excludes: auth, accounts, contenttypes, sessions')
+        self.stdout.write('  🚫 Excludes: auth, accounts, contenttypes, sessions, admin')
         self._display_permissions(group)
 
     def create_admin_group(self):
