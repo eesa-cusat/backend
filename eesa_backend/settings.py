@@ -109,7 +109,7 @@ ROOT_URLCONF = 'eesa_backend.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates'],
+        'DIRS': [],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -117,7 +117,6 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
-                'eesa_backend.context_processors.recent_actions',
             ],
         },
     },
@@ -712,10 +711,6 @@ JAZZMIN_SETTINGS = {
         "events.Event": "horizontal_tabs",
         "projects.Project": "horizontal_tabs",
     },
-    
-    # Recent actions - Filter per user
-    "show_recent_actions": True,
-    "recent_actions_limit": 10,
     
     # Language chooser
     "language_chooser": False,
