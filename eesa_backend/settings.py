@@ -562,7 +562,7 @@ JAZZMIN_SETTINGS = {
     "site_title": "EESA Admin",
     "site_header": "⚡ EESA Administration Portal",
     "site_brand": "⚡ EESA Backend",
-    "site_logo": "eesa_logo.png",  # Path to logo in static files
+    "site_logo": None,  # Set to None until logo file is added to static/
     "login_logo": None,
     "login_logo_dark": None,
     "site_logo_classes": "img-circle",
