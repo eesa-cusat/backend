@@ -560,8 +560,8 @@ else:
 JAZZMIN_SETTINGS = {
     # Site branding
     "site_title": "EESA Admin",
-    "site_header": "EESA Administration Portal",
-    "site_brand": "EESA Backend Management",
+    "site_header": "⚡ EESA Administration Portal",
+    "site_brand": "⚡ EESA Backend",
     "site_logo": None,  # Path to logo in static files
     "login_logo": None,
     "login_logo_dark": None,
@@ -573,7 +573,7 @@ JAZZMIN_SETTINGS = {
     "copyright": "EESA CUSAT © 2025",
     
     # Search
-    "search_model": ["auth.User", "auth.Group", "academics.Subject", "academics.AcademicResource", "events.Event"],
+    "search_model": ["auth.Group", "academics.Subject", "academics.AcademicResource", "events.Event"],
     
     # Top Menu
     "topmenu_links": [
@@ -644,7 +644,6 @@ JAZZMIN_SETTINGS = {
     "icons": {
         # System
         "auth": "fas fa-shield-alt",
-        "auth.user": "fas fa-user",
         "auth.Group": "fas fa-users",
         
         # Apps
@@ -694,11 +693,10 @@ JAZZMIN_SETTINGS = {
     # Change view - Better organization
     "changeform_format": "horizontal_tabs",
     "changeform_format_overrides": {
-        "auth.user": "vertical_tabs",
-        "auth.group": "vertical_tabs",
-        "academics.academicresource": "horizontal_tabs",
-        "events.event": "horizontal_tabs",
-        "projects.project": "horizontal_tabs",
+        "auth.Group": "vertical_tabs",
+        "academics.AcademicResource": "horizontal_tabs",
+        "events.Event": "horizontal_tabs",
+        "projects.Project": "horizontal_tabs",
     },
     
     # Language chooser
