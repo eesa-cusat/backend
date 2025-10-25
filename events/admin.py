@@ -184,6 +184,8 @@ class EventRegistrationAdmin(admin.ModelAdmin):
         'name', 'email', 'event', 'payment_status', 'payment_amount',
         'attended', 'certificate_issued', 'registered_at'
     ]
+    # Make the registrant name clickable to open the registration detail page
+    list_display_links = ('name',)
     list_filter = [
         'event', 'payment_status', 'attended', 'certificate_issued',
         'registered_at', 'institution', 'department'
