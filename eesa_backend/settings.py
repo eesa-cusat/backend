@@ -172,7 +172,7 @@ CLOUDINARY_CONFIG = {
     'folder': 'eesa_backend'
 }
 
-# Storage configuration
+# Storage configuration - PRODUCTION FIX: WhiteNoise for static, Cloudinary for media
 if DEBUG:
     print("📁 Using local file storage for development")
     STORAGES = {
@@ -188,18 +188,17 @@ if DEBUG:
     STATIC_URL = '/static/'
     STATIC_ROOT = BASE_DIR / 'staticfiles'
 else:
-    # Production: Cloudinary storage
+    # Production: WhiteNoise for static files (Django admin), Cloudinary for media
     if all(CLOUDINARY_CONFIG.values()):
-        print("☁️ Using Cloudinary storage for production")
+        print("☁️ Using Cloudinary for media files, WhiteNoise for static files")
         STORAGES = {
             "default": {
                 "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
             },
             "staticfiles": {
-                "BACKEND": "cloudinary_storage.storage.StaticHashedCloudinaryStorage",
+                "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
             },
         }
-        STATICFILES_STORAGE = 'cloudinary_storage.storage.StaticHashedCloudinaryStorage'
     else:
         print("⚠️ Cloudinary not configured, using local storage")
         STORAGES = {
@@ -207,13 +206,24 @@ else:
                 "BACKEND": "django.core.files.storage.FileSystemStorage",
             },
             "staticfiles": {
-                "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+                "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
             },
         }
     
     STATIC_URL = '/static/'
     STATIC_ROOT = BASE_DIR / 'staticfiles'
     MEDIA_URL = '/media/'
+
+# Static files configuration
+STATICFILES_DIRS = [
+    BASE_DIR / 'static',
+]
+
+# WhiteNoise configuration for production static files
+if not DEBUG:
+    WHITENOISE_USE_FINDERS = True
+    WHITENOISE_AUTOREFRESH = False
+    WHITENOISE_MAX_AGE = 31536000  # Cache static files for 1 year
 
 # Cloudinary setup for production
 if not DEBUG and all(CLOUDINARY_CONFIG.values()):
