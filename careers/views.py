@@ -9,6 +9,7 @@ from .serializers import (
     CertificateOpportunitySerializer, CertificateOpportunityCreateSerializer
 )
 from accounts.permissions import IsCareersTeamOrReadOnly
+from utils.redis_cache import CareersCache, get_or_set_cache, CacheTTL
 
 @api_view(['GET', 'POST'])
 @permission_classes([permissions.AllowAny])

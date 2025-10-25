@@ -1,9 +1,13 @@
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-from .models import Event
+from .models import Event, EventRegistration, EventSpeaker, EventSchedule
 from gallery.models import Album
+from utils.redis_cache import EventsCache
 import os
 from django.core.files.base import ContentFile
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @receiver(post_save, sender=Event)
@@ -11,7 +15,17 @@ def create_event_album(sender, instance, created, **kwargs):
     """
     Automatically create a gallery album when an event is created.
     Uses event flyer as the album cover image.
+    Also invalidates event cache.
     """
+    # Invalidate cache on event create/update
+    try:
+        EventsCache.invalidate_event(instance.id)
+        EventsCache.invalidate_events_list()
+        action = "created" if created else "updated"
+        logger.info(f"Event {instance.id} {action} - cache invalidated")
+    except Exception as e:
+        logger.error(f"Error invalidating cache for event {instance.id}: {str(e)}")
+    
     if created and instance.status == 'published':
         try:
             # Check if album already exists for this event
@@ -77,3 +91,50 @@ def update_event_album(sender, instance, created, **kwargs):
             print(f"✅ Updated album '{album.name}' for event '{instance.title}'")
         except Exception as e:
             print(f"❌ Failed to update album for event '{instance.title}': {e}")
+
+
+@receiver(post_delete, sender=Event)
+def invalidate_event_cache_on_delete(sender, instance, **kwargs):
+    """Invalidate events cache when an event is deleted"""
+    try:
+        EventsCache.invalidate_event(instance.id)
+        EventsCache.invalidate_events_list()
+        logger.info(f"Event {instance.id} deleted - cache invalidated")
+    except Exception as e:
+        logger.error(f"Error invalidating cache for deleted event {instance.id}: {str(e)}")
+
+
+@receiver(post_save, sender=EventRegistration)
+def invalidate_event_cache_on_registration(sender, instance, created, **kwargs):
+    """Invalidate event cache when someone registers"""
+    try:
+        if instance.event:
+            EventsCache.invalidate_event(instance.event.id)
+            logger.info(f"Event {instance.event.id} registration updated - cache invalidated")
+    except Exception as e:
+        logger.error(f"Error invalidating cache for event registration: {str(e)}")
+
+
+@receiver(post_save, sender=EventSpeaker)
+@receiver(post_delete, sender=EventSpeaker)
+def invalidate_event_cache_on_speaker_change(sender, instance, **kwargs):
+    """Invalidate event cache when speakers are added/updated/deleted"""
+    try:
+        if instance.event:
+            EventsCache.invalidate_event(instance.event.id)
+            logger.info(f"Event {instance.event.id} speaker updated - cache invalidated")
+    except Exception as e:
+        logger.error(f"Error invalidating cache for event speaker: {str(e)}")
+
+
+@receiver(post_save, sender=EventSchedule)
+@receiver(post_delete, sender=EventSchedule)
+def invalidate_event_cache_on_schedule_change(sender, instance, **kwargs):
+    """Invalidate event cache when schedule is added/updated/deleted"""
+    try:
+        if instance.event:
+            EventsCache.invalidate_event(instance.event.id)
+            logger.info(f"Event {instance.event.id} schedule updated - cache invalidated")
+    except Exception as e:
+        logger.error(f"Error invalidating cache for event schedule: {str(e)}")
+

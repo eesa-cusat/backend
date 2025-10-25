@@ -1,9 +1,13 @@
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-from .models import AlumniBatch
+from .models import AlumniBatch, Alumni
 from gallery.models import Album, Photo
+from utils.redis_cache import AlumniCache
 import os
 from django.core.files.base import ContentFile
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @receiver(post_save, sender=AlumniBatch)
@@ -11,7 +15,16 @@ def add_batch_to_alumni_album(sender, instance, created, **kwargs):
     """
     Add batch photo to the single 'Alumni' album when an AlumniBatch is created.
     Creates the alumni album if it doesn't exist.
+    Also invalidates cache.
     """
+    # Invalidate cache
+    try:
+        AlumniCache.invalidate_batches()
+        action = "created" if created else "updated"
+        logger.info(f"AlumniBatch {instance.id} {action} - cache invalidated")
+    except Exception as e:
+        logger.error(f"Error invalidating cache for alumni batch {instance.id}: {str(e)}")
+    
     if created and instance.batch_group_photo:
         try:
             # Get or create the single Alumni album
@@ -158,3 +171,41 @@ def update_batch_photo_in_alumni_album(sender, instance, created, **kwargs):
                     
         except Exception as e:
             print(f"❌ Failed to process Alumni album update for batch '{instance.batch_name}': {e}")
+
+
+@receiver(post_delete, sender=AlumniBatch)
+def invalidate_batch_cache_on_delete(sender, instance, **kwargs):
+    """Invalidate alumni batches cache when a batch is deleted"""
+    try:
+        AlumniCache.invalidate_batches()
+        if instance.batch_year_range:
+            AlumniCache.invalidate_batch_students(instance.batch_year_range)
+        logger.info(f"AlumniBatch {instance.id} deleted - cache invalidated")
+    except Exception as e:
+        logger.error(f"Error invalidating cache for deleted alumni batch {instance.id}: {str(e)}")
+
+
+@receiver(post_save, sender=Alumni)
+def invalidate_alumni_cache_on_save(sender, instance, created, **kwargs):
+    """Invalidate alumni cache when an alumni record is created or updated"""
+    try:
+        if instance.batch and instance.batch.batch_year_range:
+            AlumniCache.invalidate_batch_students(instance.batch.batch_year_range)
+        AlumniCache.invalidate_batches()
+        action = "created" if created else "updated"
+        logger.info(f"Alumni {instance.id} {action} - cache invalidated")
+    except Exception as e:
+        logger.error(f"Error invalidating cache for alumni {instance.id}: {str(e)}")
+
+
+@receiver(post_delete, sender=Alumni)
+def invalidate_alumni_cache_on_delete(sender, instance, **kwargs):
+    """Invalidate alumni cache when an alumni record is deleted"""
+    try:
+        if instance.batch and instance.batch.batch_year_range:
+            AlumniCache.invalidate_batch_students(instance.batch.batch_year_range)
+        AlumniCache.invalidate_batches()
+        logger.info(f"Alumni {instance.id} deleted - cache invalidated")
+    except Exception as e:
+        logger.error(f"Error invalidating cache for deleted alumni {instance.id}: {str(e)}")
+

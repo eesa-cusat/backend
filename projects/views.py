@@ -3,8 +3,9 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, Count, Prefetch
-from django.core.cache import cache
 from accounts.permissions import IsOwnerOrReadOnly, IsAcademicsTeamOrReadOnly
+from utils.redis_cache import ProjectsCache, get_or_set_cache, CacheTTL, invalidate_cache_pattern
+import hashlib
 
 
 class ProjectPageNumberPagination(PageNumberPagination):
@@ -22,59 +23,39 @@ from .serializers import (
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
 def projects_batch_data(request):
-    """Optimized batch endpoint for projects page - loads everything at once with caching"""
-    from django.core.cache import cache
+    """Optimized batch endpoint for projects page - loads everything at once with Redis caching"""
     import logging
-    import hashlib
     
     logger = logging.getLogger('eesa_backend.queries')
     
     # Get filter parameters
     category = request.GET.get('category')
     search = request.GET.get('search')
-    year = request.GET.get('year')  # New year filter
+    year = request.GET.get('year')
     
-    # Create cache key based on filters
-    filter_string = f"cat:{category or 'all'}_search:{search or 'none'}_year:{year or 'all'}"
-    cache_key_hash = hashlib.md5(filter_string.encode()).hexdigest()
-    cache_key = f'projects_batch_data_{cache_key_hash}'
-    
-    # Try cache first for filtered results (5 minutes cache)
-    if not search:  # Only cache non-search results
-        cached_data = cache.get(cache_key)
-        if cached_data:
-            logger.info(f"Projects batch data served from cache (key: {cache_key})")
-            return Response(cached_data)
-    
-    logger.info(f"Generating fresh projects batch data (filters: {filter_string})")
-    
-    # Base queryset with aggressive optimizations
-    base_queryset = Project.objects.select_related('created_by').prefetch_related(
-        Prefetch('team_members', 
-                queryset=TeamMember.objects.only('name', 'project_id', 'role')),
-        Prefetch('images', 
-                queryset=ProjectImage.objects.only('image', 'project_id')),
-    ).filter(is_published=True).only(
-        'id', 'title', 'description', 'abstract', 'category', 'created_at', 'is_featured',
-        'demo_url', 'github_url', 'created_by__username', 'created_by__first_name',
-        'created_by__last_name', 'student_batch', 'academic_year', 'thumbnail', 'project_image'
-    )
-    
-    # Apply filters
-    queryset = base_queryset
-    
-    # Category filter
-    if category and category != 'All Categories':
-        queryset = queryset.filter(category=category)
-    
-    # Year filter (NEW)
-    if year:
-        queryset = queryset.filter(academic_year=year)
-    
-    # Search filter
+    # Skip cache for search queries
     if search:
-        # Optimized search with database indexes
-        search_terms = search.split()[:3]  # Limit search terms to prevent slow queries
+        # Original search logic without caching
+        base_queryset = Project.objects.select_related('created_by').prefetch_related(
+            Prefetch('team_members', 
+                    queryset=TeamMember.objects.only('name', 'project_id', 'role')),
+            Prefetch('images', 
+                    queryset=ProjectImage.objects.only('image', 'project_id')),
+        ).filter(is_published=True).only(
+            'id', 'title', 'description', 'abstract', 'category', 'created_at', 'is_featured',
+            'demo_url', 'github_url', 'created_by__username', 'created_by__first_name',
+            'created_by__last_name', 'student_batch', 'academic_year', 'thumbnail', 'project_image'
+        )
+        
+        queryset = base_queryset
+        
+        if category and category != 'All Categories':
+            queryset = queryset.filter(category=category)
+        
+        if year:
+            queryset = queryset.filter(academic_year=year)
+        
+        search_terms = search.split()[:3]
         search_query = Q()
         for term in search_terms:
             search_query |= (
@@ -85,45 +66,85 @@ def projects_batch_data(request):
                 Q(created_by__last_name__icontains=term)
             )
         queryset = queryset.filter(search_query).distinct()
-    
-    # Order and limit results
-    projects = queryset.order_by('-is_featured', '-created_at')
-    
-    # Get categories from choices (no DB query needed)
-    categories = dict(Project.CATEGORY_CHOICES)
-    
-    # Get available years for filtering
-    available_years = Project.objects.filter(
-        is_published=True, 
-        academic_year__isnull=False
-    ).values_list('academic_year', flat=True).distinct().order_by('-academic_year')
-    
-    # Use slicing to avoid COUNT() queries
-    featured_projects = projects.filter(is_featured=True)[:4]
-    recent_projects = projects[:12]
-    
-    # Get total count only if needed (expensive operation)
-    total_count = projects.count() if len(projects) <= 100 else '100+'
-    
-    response_data = {
-        'projects': ProjectListSerializer(recent_projects, many=True, context={'request': request}).data,
-        'featured_projects': ProjectListSerializer(featured_projects, many=True, context={'request': request}).data,
-        'categories': categories,
-        'available_years': list(available_years),
-        'total_count': total_count,
-        'filters': {
-            'category': category or 'All Categories',
-            'year': year or 'All Years',
-            'search': search or ''
+        
+        projects = queryset.order_by('-is_featured', '-created_at')
+        categories = dict(Project.CATEGORY_CHOICES)
+        available_years = Project.objects.filter(
+            is_published=True, 
+            academic_year__isnull=False
+        ).values_list('academic_year', flat=True).distinct().order_by('-academic_year')
+        
+        featured_projects = projects.filter(is_featured=True)[:4]
+        recent_projects = projects[:12]
+        total_count = projects.count() if len(projects) <= 100 else '100+'
+        
+        response_data = {
+            'projects': ProjectListSerializer(recent_projects, many=True, context={'request': request}).data,
+            'featured_projects': ProjectListSerializer(featured_projects, many=True, context={'request': request}).data,
+            'categories': categories,
+            'available_years': list(available_years),
+            'total_count': total_count,
+            'filters': {
+                'category': category or 'All Categories',
+                'year': year or 'All Years',
+                'search': search or ''
+            }
         }
-    }
+        
+        return Response(response_data)
     
-    # Cache non-search results for 5 minutes
-    if not search:
-        cache.set(cache_key, response_data, 300)
-        logger.info(f"Projects batch data cached (key: {cache_key})")
+    # Use cache for non-search queries
+    filter_string = f"cat:{category or 'all'}_year:{year or 'all'}"
+    cache_key_hash = hashlib.md5(filter_string.encode()).hexdigest()
+    cache_key = ProjectsCache.projects_list_key(category=category, year=year, hash=cache_key_hash)
     
-    return Response(response_data)
+    def fetch_projects_batch():
+        base_queryset = Project.objects.select_related('created_by').prefetch_related(
+            Prefetch('team_members', 
+                    queryset=TeamMember.objects.only('name', 'project_id', 'role')),
+            Prefetch('images', 
+                    queryset=ProjectImage.objects.only('image', 'project_id')),
+        ).filter(is_published=True).only(
+            'id', 'title', 'description', 'abstract', 'category', 'created_at', 'is_featured',
+            'demo_url', 'github_url', 'created_by__username', 'created_by__first_name',
+            'created_by__last_name', 'student_batch', 'academic_year', 'thumbnail', 'project_image'
+        )
+        
+        queryset = base_queryset
+        
+        if category and category != 'All Categories':
+            queryset = queryset.filter(category=category)
+        
+        if year:
+            queryset = queryset.filter(academic_year=year)
+        
+        projects = queryset.order_by('-is_featured', '-created_at')
+        categories = dict(Project.CATEGORY_CHOICES)
+        available_years = Project.objects.filter(
+            is_published=True, 
+            academic_year__isnull=False
+        ).values_list('academic_year', flat=True).distinct().order_by('-academic_year')
+        
+        featured_projects = projects.filter(is_featured=True)[:4]
+        recent_projects = projects[:12]
+        total_count = projects.count() if len(projects) <= 100 else '100+'
+        
+        return {
+            'projects': ProjectListSerializer(recent_projects, many=True, context={'request': request}).data,
+            'featured_projects': ProjectListSerializer(featured_projects, many=True, context={'request': request}).data,
+            'categories': categories,
+            'available_years': list(available_years),
+            'total_count': total_count,
+            'filters': {
+                'category': category or 'All Categories',
+                'year': year or 'All Years',
+                'search': ''
+            }
+        }
+    
+    cached_data = get_or_set_cache(cache_key, fetch_projects_batch, CacheTTL.PROJECTS_LIST)
+    logger.info(f"Projects batch data served (cached: {cache_key})")
+    return Response(cached_data)
 
 
 @api_view(['GET'])

@@ -318,50 +318,48 @@ CORS_ALLOW_HEADERS = [
     'dnt', 'origin', 'user-agent', 'x-csrftoken', 'x-requested-with'
 ]
 
-# Caching configuration
-if not DEBUG and os.environ.get('REDIS_URL'):
-    print("🔄 Using Redis cache for production")
+# Caching configuration - Upstash Redis for production, local for development
+REDIS_URL = os.environ.get('REDIS_URL') or os.environ.get('UPSTASH_REDIS_URL')
+
+if REDIS_URL:
+    # Production/Staging: Use Upstash Redis or any Redis instance
+    print(f"🔄 Using Redis cache ({'Upstash' if 'upstash' in REDIS_URL.lower() else 'Redis'})")
     CACHES = {
         'default': {
             'BACKEND': 'django_redis.cache.RedisCache',
-            'LOCATION': os.environ.get('REDIS_URL'),
+            'LOCATION': REDIS_URL,
             'OPTIONS': {
                 'CLIENT_CLASS': 'django_redis.client.DefaultClient',
                 'CONNECTION_POOL_KWARGS': {
                     'max_connections': 50,
                     'socket_keepalive': True,
+                    'retry_on_timeout': True,
                 },
+                'SOCKET_CONNECT_TIMEOUT': 5,
+                'SOCKET_TIMEOUT': 5,
                 'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
                 'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
+                'IGNORE_EXCEPTIONS': True,  # Don't crash if Redis is unavailable
             },
-            'KEY_PREFIX': 'eesa_backend',
-            'TIMEOUT': 300,
-        }
-    }
-elif not DEBUG:
-    print("🔄 Using database cache for production")
-    CACHES = {
-        'default': {
-            'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
-            'LOCATION': 'eesa_cache_table',
-            'TIMEOUT': 300,
-            'OPTIONS': {
-                'MAX_ENTRIES': 1000,
-                'CULL_FREQUENCY': 3,
-            }
+            'KEY_PREFIX': f'eesa_{ENVIRONMENT}',
+            'TIMEOUT': 300,  # Default 5 minutes
         }
     }
 else:
-    print("🔄 Using local memory cache for development")
+    # Development: Use local memory cache
+    print("🔄 Using local memory cache (no Redis configured)")
     CACHES = {
         'default': {
             'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
             'LOCATION': 'eesa-dev-cache',
+            'OPTIONS': {
+                'MAX_ENTRIES': 1000,
+            }
         }
     }
 
 # Cache settings
-CACHE_TTL = 60 * 60 * 24 if not DEBUG else 60 * 5
+CACHE_TTL = 60 * 60 * 24 if not DEBUG else 60 * 5  # Legacy - use CacheTTL class in utils.redis_cache
 CACHE_KEY_PREFIX = f'eesa_{ENVIRONMENT}_'
 
 # Session configuration

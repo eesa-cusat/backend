@@ -4,14 +4,13 @@ from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
 from django.db.models import Prefetch
-from django.core.cache import cache
-from django.views.decorators.cache import cache_page
 from .models import Event, EventRegistration, EventSpeaker, EventSchedule, EventFeedback
 from .serializers import (
     EventSerializer, EventListSerializer, EventRegistrationSerializer,
     EventSpeakerSerializer, EventScheduleSerializer, EventFeedbackSerializer
 )
 from accounts.permissions import IsEventsTeamOrReadOnly
+from utils.redis_cache import EventsCache, get_or_set_cache, CacheTTL
 
 
 class EventPageNumberPagination(PageNumberPagination):
@@ -147,11 +146,10 @@ def upcoming_events(request):
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
 def featured_events(request):
-    """Get featured events with caching"""
-    cache_key = 'featured_events_list'
-    cached_data = cache.get(cache_key)
+    """Get featured events with Redis caching"""
+    cache_key = 'events:featured'
     
-    if cached_data is None:
+    def fetch_featured():
         events = Event.objects.select_related('created_by').filter(
             status='published',
             is_active=True,
@@ -159,9 +157,9 @@ def featured_events(request):
         ).prefetch_related('registrations').order_by('-start_date')[:3]
         
         serializer = EventListSerializer(events, many=True)
-        cached_data = serializer.data
-        cache.set(cache_key, cached_data, 300)  # Cache for 5 minutes
+        return serializer.data
     
+    cached_data = get_or_set_cache(cache_key, fetch_featured, CacheTTL.EVENTS_LIST)
     return Response(cached_data)
 
 

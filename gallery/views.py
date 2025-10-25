@@ -6,6 +6,7 @@ from django.db.models import Q
 from .models import Album, Photo
 from .serializers import AlbumSerializer, AlbumListSerializer, PhotoSerializer
 from accounts.permissions import IsGalleryManager
+from utils.redis_cache import GalleryCache, get_or_set_cache, CacheTTL
 
 
 class GalleryPageNumberPagination(PageNumberPagination):
@@ -57,33 +58,59 @@ class AlbumViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
     def public(self, request):
-        """Public albums endpoint with pagination"""
+        """Public albums endpoint with pagination and caching"""
         album_type = request.query_params.get('type')
         search_term = request.query_params.get('search', '').strip()
+        page = request.query_params.get('page', 1)
         
-        queryset = Album.objects.select_related('event', 'created_by').prefetch_related('photos').all()
-        
-        if album_type in ['eesa', 'general', 'alumni']:
-            queryset = queryset.filter(type=album_type)
-            
+        # Skip cache for search queries
         if search_term:
+            queryset = Album.objects.select_related('event', 'created_by').prefetch_related('photos').all()
+            
+            if album_type in ['eesa', 'general', 'alumni']:
+                queryset = queryset.filter(type=album_type)
+                
             queryset = queryset.filter(
                 Q(name__icontains=search_term) |
                 Q(description__icontains=search_term) |
                 Q(event__title__icontains=search_term)
             )
+            
+            queryset = queryset.order_by('-created_at')
+            
+            # Apply pagination
+            paginator = GalleryPageNumberPagination()
+            page_obj = paginator.paginate_queryset(queryset, request)
+            if page_obj is not None:
+                serializer = AlbumListSerializer(page_obj, many=True)
+                return paginator.get_paginated_response(serializer.data)
+            
+            serializer = AlbumListSerializer(queryset, many=True)
+            return Response(serializer.data)
         
-        queryset = queryset.order_by('-created_at')
+        # Use cache for non-search queries
+        cache_key = GalleryCache.albums_list_key(album_type=album_type, page=page)
         
-        # Apply pagination
-        paginator = GalleryPageNumberPagination()
-        page = paginator.paginate_queryset(queryset, request)
-        if page is not None:
-            serializer = AlbumListSerializer(page, many=True)
-            return paginator.get_paginated_response(serializer.data)
+        def fetch_albums():
+            queryset = Album.objects.select_related('event', 'created_by').prefetch_related('photos').all()
+            
+            if album_type in ['eesa', 'general', 'alumni']:
+                queryset = queryset.filter(type=album_type)
+            
+            queryset = queryset.order_by('-created_at')
+            
+            # Apply pagination
+            paginator = GalleryPageNumberPagination()
+            page_obj = paginator.paginate_queryset(queryset, request)
+            if page_obj is not None:
+                serializer = AlbumListSerializer(page_obj, many=True)
+                return paginator.get_paginated_response(serializer.data).data
+            
+            serializer = AlbumListSerializer(queryset, many=True)
+            return serializer.data
         
-        serializer = AlbumListSerializer(queryset, many=True)
-        return Response(serializer.data)
+        cached_data = get_or_set_cache(cache_key, fetch_albums, CacheTTL.GALLERY_ALBUMS)
+        return Response(cached_data)
 
 
 class PhotoViewSet(viewsets.ModelViewSet):

@@ -10,6 +10,7 @@ from django.db import transaction
 from django.views.decorators.csrf import csrf_exempt
 from .models import Scheme, Subject, AcademicResource, ResourceLike, ACADEMIC_CATEGORIES
 from .serializers import AcademicResourceSerializer, AcademicResourceListSerializer
+from utils.redis_cache import AcademicsCache, get_or_set_cache, CacheTTL
 import os
 
 
@@ -72,64 +73,70 @@ class AcademicResourceViewSet(viewsets.ReadOnlyModelViewSet):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def academic_data_combined(request):
-    """Get all academic data in one call"""
-    # Schemes
-    schemes = Scheme.objects.filter(is_active=True).order_by('name')
-    schemes_data = [
-        {
-            'id': scheme.id,
-            'name': scheme.name,
-            'year': scheme.year,
-            'is_active': scheme.is_active,
-        }
-        for scheme in schemes
-    ]
+    """Get all academic data in one call with Redis caching"""
+    cache_key = AcademicsCache.programs_key()
     
-    # Categories
-    categories_data = [
-        {
-            'id': category[0],
-            'name': category[1],
-            'category_type': category[0]
-        }
-        for category in ACADEMIC_CATEGORIES
-    ]
-    
-    # Departments
-    departments = Subject.objects.values_list('department', flat=True).distinct().order_by('department')
-    departments_data = [dept for dept in departments if dept]
-    
-    # Subjects grouped by scheme and semester
-    subjects = Subject.objects.select_related('scheme').order_by('name')
-    subjects_data = {}
-    for subject in subjects:
-        scheme_id = subject.scheme_id
-        semester = subject.semester
-        department = subject.department
+    def fetch_academic_data():
+        # Schemes
+        schemes = Scheme.objects.filter(is_active=True).order_by('name')
+        schemes_data = [
+            {
+                'id': scheme.id,
+                'name': scheme.name,
+                'year': scheme.year,
+                'is_active': scheme.is_active,
+            }
+            for scheme in schemes
+        ]
         
-        if scheme_id not in subjects_data:
-            subjects_data[scheme_id] = {}
-        if semester not in subjects_data[scheme_id]:
-            subjects_data[scheme_id][semester] = {}
-        if department not in subjects_data[scheme_id][semester]:
-            subjects_data[scheme_id][semester][department] = []
+        # Categories
+        categories_data = [
+            {
+                'id': category[0],
+                'name': category[1],
+                'category_type': category[0]
+            }
+            for category in ACADEMIC_CATEGORIES
+        ]
+        
+        # Departments
+        departments = Subject.objects.values_list('department', flat=True).distinct().order_by('department')
+        departments_data = [dept for dept in departments if dept]
+        
+        # Subjects grouped by scheme and semester
+        subjects = Subject.objects.select_related('scheme').order_by('name')
+        subjects_data = {}
+        for subject in subjects:
+            scheme_id = subject.scheme_id
+            semester = subject.semester
+            department = subject.department
             
-        subjects_data[scheme_id][semester][department].append({
-            'id': subject.id,
-            'name': subject.name,
-            'code': subject.code,
-            'semester': subject.semester,
-            'department': subject.department,
-            'scheme_name': subject.scheme.name,
-        })
+            if scheme_id not in subjects_data:
+                subjects_data[scheme_id] = {}
+            if semester not in subjects_data[scheme_id]:
+                subjects_data[scheme_id][semester] = {}
+            if department not in subjects_data[scheme_id][semester]:
+                subjects_data[scheme_id][semester][department] = []
+                
+            subjects_data[scheme_id][semester][department].append({
+                'id': subject.id,
+                'name': subject.name,
+                'code': subject.code,
+                'semester': subject.semester,
+                'department': subject.department,
+                'scheme_name': subject.scheme.name,
+            })
+        
+        return {
+            'schemes': schemes_data,
+            'categories': categories_data,
+            'departments': departments_data,
+            'subjects': subjects_data,
+            'message': 'All academic data fetched successfully'
+        }
     
-    return Response({
-        'schemes': schemes_data,
-        'categories': categories_data,
-        'departments': departments_data,
-        'subjects': subjects_data,
-        'message': 'All academic data fetched successfully'
-    })
+    cached_data = get_or_set_cache(cache_key, fetch_academic_data, CacheTTL.PROGRAMS)
+    return Response(cached_data)
 
 
 @api_view(['GET'])

@@ -17,6 +17,7 @@ from .serializers import (
     AlumniBatchStatsSerializer, AlumniListSerializer
 )
 from accounts.permissions import IsPeopleTeamOrReadOnly
+from utils.redis_cache import AlumniCache, get_or_set_cache, CacheTTL
 
 
 class AlumniPageNumberPagination(PageNumberPagination):
