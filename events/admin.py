@@ -51,6 +51,9 @@ class EventAdmin(admin.ModelAdmin):
         ('Payment Settings', {
             'fields': ('registration_fee', 'payment_required', 'payment_qr_code', 'payment_upi_id', 'payment_instructions')
         }),
+        ('Food Settings', {
+            'fields': ('is_food_available',)
+        }),
         ('Contact Information', {
             'fields': ('contact_person', 'contact_email', 'contact_phone')
         }),
@@ -182,10 +185,10 @@ class EventAdmin(admin.ModelAdmin):
 class EventRegistrationAdmin(admin.ModelAdmin):
     list_display = [
         'name', 'email', 'event', 'payment_status', 'payment_amount',
-        'attended', 'certificate_issued', 'registered_at'
+        'food_preference_display', 'attended', 'certificate_issued', 'registered_at'
     ]
     list_filter = [
-        'event', 'payment_status', 'attended', 'certificate_issued',
+        'event', 'payment_status', 'food_preference', 'attended', 'certificate_issued',
         'registered_at', 'institution', 'department'
     ]
     search_fields = ['name', 'email', 'mobile_number', 'institution', 'organization', 'event__title']
@@ -213,7 +216,7 @@ class EventRegistrationAdmin(admin.ModelAdmin):
             )
         }),
         ('Additional Information', {
-            'fields': ('dietary_requirements', 'special_needs')
+            'fields': ('food_preference', 'special_needs')
         }),
         ('Attendance & Certificates', {
             'fields': ('attended', 'certificate_issued')
@@ -228,6 +231,16 @@ class EventRegistrationAdmin(admin.ModelAdmin):
         """Optimize query and order by event"""
         qs = super().get_queryset(request)
         return qs.select_related('event', 'payment_verified_by').order_by('event__start_date', 'event__title', '-registered_at')
+    
+    def food_preference_display(self, obj):
+        """Display food preference with icons"""
+        if obj.food_preference == 'veg':
+            return format_html('<span style="color: green;">🥗 Vegetarian</span>')
+        elif obj.food_preference == 'non_veg':
+            return format_html('<span style="color: #d9534f;">🍗 Non-Vegetarian</span>')
+        return '—'
+    food_preference_display.short_description = 'Food Preference'
+    food_preference_display.admin_order_field = 'food_preference'
     
     def mark_as_attended(self, request, queryset):
         queryset.update(attended=True)
