@@ -61,8 +61,8 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'cloudinary_storage',
-    'django.contrib.staticfiles',
+    'django.contrib.staticfiles',  # MUST be before cloudinary_storage
+    'cloudinary_storage',  # After staticfiles to prevent collectstatic override
     'cloudinary',
     'rest_framework',
     'corsheaders',
@@ -199,6 +199,8 @@ else:
                 "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
             },
         }
+        # Legacy setting for django-cloudinary-storage compatibility
+        STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
     else:
         print("⚠️ Cloudinary not configured, using local storage")
         STORAGES = {
@@ -209,6 +211,7 @@ else:
                 "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
             },
         }
+        STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
     
     STATIC_URL = '/static/'
     STATIC_ROOT = BASE_DIR / 'staticfiles'
