@@ -199,10 +199,26 @@ def quick_register(request):
             status=status.HTTP_400_BAD_REQUEST
         )
     
+    # Check for duplicate email registration
+    email = request.data.get('email')
+    if email and EventRegistration.objects.filter(event=event, email=email).exists():
+        return Response(
+            {'error': 'This email address is already registered for this event.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
     serializer = EventRegistrationSerializer(data=request.data)
     if serializer.is_valid():
         serializer.save(event=event)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    # Return friendly error messages
+    errors = serializer.errors
+    if 'email' in errors:
+        return Response(
+            {'error': str(errors['email'][0]) if isinstance(errors['email'], list) else str(errors['email'])},
+            status=status.HTTP_400_BAD_REQUEST
+        )
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

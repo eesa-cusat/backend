@@ -46,7 +46,7 @@ class EventSerializer(serializers.ModelSerializer):
             'location', 'venue', 'address', 'is_online', 'meeting_link',
             'registration_required', 'max_participants',
             'registration_fee', 'payment_required', 'payment_qr_code',
-            'payment_upi_id', 'payment_instructions',
+            'payment_upi_id', 'payment_instructions', 'is_food_available',
             'contact_person', 'contact_email', 'contact_phone',
             'banner_image', 'event_flyer',
             'is_active', 'is_featured',
@@ -114,6 +114,7 @@ class EventRegistrationSerializer(serializers.ModelSerializer):
     event_title = serializers.CharField(source='event.title', read_only=True)
     event_date = serializers.DateTimeField(source='event.start_date', read_only=True)
     payment_status_display = serializers.CharField(source='get_payment_status_display', read_only=True)
+    food_preference_display = serializers.CharField(source='get_food_preference_display', read_only=True)
     
     class Meta:
         model = EventRegistration
@@ -124,7 +125,7 @@ class EventRegistrationSerializer(serializers.ModelSerializer):
             'organization', 'designation',
             'payment_status', 'payment_status_display', 'payment_amount',
             'payment_date', 'payment_reference_id',
-            'dietary_requirements', 'special_needs',
+            'food_preference', 'food_preference_display', 'special_needs',
             'attended', 'certificate_issued',
             'registered_at', 'updated_at'
         ]
@@ -138,7 +139,7 @@ class EventRegistrationSerializer(serializers.ModelSerializer):
                 event_id=event, email=value
             ).exclude(id=self.instance.id if self.instance else None)
             if existing.exists():
-                raise serializers.ValidationError("You have already registered for this event.")
+                raise serializers.ValidationError("This email address is already registered for this event.")
         return value
     
     def validate(self, data):
@@ -188,7 +189,7 @@ class EventRegistrationCreateSerializer(serializers.ModelSerializer):
             'name', 'email', 'mobile_number',
             'institution', 'department', 'year_of_study',
             'organization', 'designation',
-            'dietary_requirements', 'special_needs'
+            'food_preference', 'special_needs', 'payment_reference_id'
         ]
     
     def validate_email(self, value):

@@ -100,6 +100,9 @@ class Event(models.Model):
     payment_upi_id = models.CharField(max_length=100, blank=True, null=True)
     payment_instructions = models.TextField(blank=True, null=True)
     
+    # Food Settings
+    is_food_available = models.BooleanField(default=False, help_text="Is food provided at this event?")
+    
     # Contact Information
     contact_person = models.CharField(max_length=100, blank=True, null=True)
     contact_email = models.EmailField(blank=True, null=True)
@@ -210,7 +213,17 @@ class EventRegistration(models.Model):
     )
     
     # Additional Information
-    dietary_requirements = models.TextField(blank=True, null=True)
+    FOOD_PREFERENCE_CHOICES = [
+        ('veg', 'Vegetarian'),
+        ('non_veg', 'Non-Vegetarian'),
+    ]
+    food_preference = models.CharField(
+        max_length=10,
+        choices=FOOD_PREFERENCE_CHOICES,
+        blank=True,
+        null=True,
+        help_text="Food preference if food is available at event"
+    )
     special_needs = models.TextField(blank=True, null=True)
     
     # Attendance Tracking
