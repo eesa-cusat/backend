@@ -26,3 +26,6 @@ requests==2.31.0
 # Redis caching (Upstash compatible)
 redis==5.0.1
 django-redis==5.4.0
+
+# Modern Admin UI (Django 5.1 compatible)
+django-jazzmin==3.0.1

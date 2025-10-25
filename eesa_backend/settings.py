@@ -55,6 +55,7 @@ else:
 
 # Application definition
 INSTALLED_APPS = [
+    'jazzmin',  # Must be before django.contrib.admin
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -550,3 +551,188 @@ else:
         print("☁️ Cloudinary storage configured")
     else:
         print("⚠️ Using local storage fallback")
+
+
+# ==========================================
+# JAZZMIN ADMIN UI CONFIGURATION
+# ==========================================
+
+JAZZMIN_SETTINGS = {
+    # Site branding
+    "site_title": "EESA Admin",
+    "site_header": "EESA Administration Portal",
+    "site_brand": "EESA Backend Management",
+    "site_logo": None,  # Path to logo in static files
+    "login_logo": None,
+    "login_logo_dark": None,
+    "site_logo_classes": "img-circle",
+    "site_icon": None,  # Favicon path
+    
+    # Welcome text
+    "welcome_sign": "Welcome to EESA Admin Panel",
+    "copyright": "EESA CUSAT © 2025",
+    
+    # Search
+    "search_model": ["auth.User", "auth.Group", "academics.Subject", "academics.AcademicResource", "events.Event"],
+    
+    # Top Menu
+    "topmenu_links": [
+        {"name": "Home", "url": "admin:index", "permissions": ["auth.view_user"]},
+        {"name": "API", "url": "/api/", "new_window": True},
+    ],
+    
+    # User menu
+    "usermenu_links": [
+        {"name": "My Profile", "url": "admin:password_change", "icon": "fas fa-key"},
+    ],
+    
+    # Side Menu - Hide individual models, only show apps
+    "show_sidebar": True,
+    "navigation_expanded": False,
+    "hide_apps": [],
+    "hide_models": [
+        "academics.Scheme", 
+        "academics.Subject", 
+        "academics.AcademicResource"
+    ],
+    
+    # Order for apps
+    "order_with_respect_to": [
+        "auth", 
+        "academics", 
+        "projects", 
+        "events", 
+        "gallery", 
+        "placements", 
+        "careers", 
+        "alumni", 
+        "accounts"
+    ],
+    
+    # Custom links to add to each app dropdown
+    "custom_links": {
+        "auth": [{
+            "name": "👥 User Groups", 
+            "url": "/eesa/auth/group/",
+            "icon": "fas fa-users",
+            "permissions": ["auth.view_group"]
+        }],
+        "academics": [{
+            "name": "📋 Manage Schemes", 
+            "url": "/eesa/academics/scheme/",
+            "icon": "fas fa-sitemap",
+            "permissions": ["academics.view_scheme"]
+        }, {
+            "name": "📚 Manage Subjects", 
+            "url": "/eesa/academics/subject/",
+            "icon": "fas fa-book",
+            "permissions": ["academics.view_subject"]
+        }, {
+            "name": "📄 Manage Resources", 
+            "url": "/eesa/academics/academicresource/",
+            "icon": "fas fa-file-pdf",
+            "permissions": ["academics.view_academicresource"]
+        }, {
+            "name": "☁️ Bulk Upload PDFs", 
+            "url": "/eesa/academics/academicresource/bulk-upload/",
+            "icon": "fas fa-cloud-upload-alt",
+            "permissions": ["academics.add_academicresource"]
+        }]
+    },
+    
+    # Custom icons for apps and models
+    "icons": {
+        # System
+        "auth": "fas fa-shield-alt",
+        "auth.user": "fas fa-user",
+        "auth.Group": "fas fa-users",
+        
+        # Apps
+        "academics": "fas fa-graduation-cap",
+        "academics.Scheme": "fas fa-sitemap",
+        "academics.Subject": "fas fa-book",
+        "academics.AcademicResource": "fas fa-file-pdf",
+        
+        "events": "fas fa-calendar-check",
+        "events.Event": "fas fa-calendar-alt",
+        "events.EventRegistration": "fas fa-user-check",
+        "events.Notification": "fas fa-bell",
+        
+        "gallery": "fas fa-images",
+        "gallery.Album": "fas fa-folder",
+        "gallery.Photo": "fas fa-image",
+        
+        "projects": "fas fa-project-diagram",
+        "projects.Project": "fas fa-code",
+        
+        "placements": "fas fa-briefcase",
+        "placements.Company": "fas fa-building",
+        "placements.PlacementDrive": "fas fa-calendar-day",
+        "placements.PlacedStudent": "fas fa-user-tie",
+        
+        "careers": "fas fa-user-tie",
+        "careers.JobOpportunity": "fas fa-suitcase",
+        "careers.InternshipOpportunity": "fas fa-user-graduate",
+        
+        "alumni": "fas fa-user-graduate",
+        "accounts": "fas fa-user-circle",
+    },
+    
+    # Icons for custom actions
+    "default_icon_parents": "fas fa-chevron-circle-right",
+    "default_icon_children": "fas fa-circle",
+    
+    # Related modal
+    "related_modal_active": False,
+    
+    # UI Tweaks
+    "custom_css": None,
+    "custom_js": None,
+    "use_google_fonts_cdn": True,
+    "show_ui_builder": False,
+    
+    # Change view - Better organization
+    "changeform_format": "horizontal_tabs",
+    "changeform_format_overrides": {
+        "auth.user": "vertical_tabs",
+        "auth.group": "vertical_tabs",
+        "academics.academicresource": "horizontal_tabs",
+        "events.event": "horizontal_tabs",
+        "projects.project": "horizontal_tabs",
+    },
+    
+    # Language chooser
+    "language_chooser": False,
+}
+
+JAZZMIN_UI_TWEAKS = {
+    "navbar_small_text": False,
+    "footer_small_text": False,
+    "body_small_text": False,
+    "brand_small_text": False,
+    "brand_colour": "navbar-primary",
+    "accent": "accent-primary",
+    "navbar": "navbar-dark",
+    "no_navbar_border": False,
+    "navbar_fixed": True,
+    "layout_boxed": False,
+    "footer_fixed": False,
+    "sidebar_fixed": True,
+    "sidebar": "sidebar-dark-primary",
+    "sidebar_nav_small_text": False,
+    "sidebar_disable_expand": False,
+    "sidebar_nav_child_indent": False,
+    "sidebar_nav_compact_style": False,
+    "sidebar_nav_legacy_style": False,
+    "sidebar_nav_flat_style": False,
+    "theme": "default",
+    "dark_mode_theme": None,
+    "button_classes": {
+        "primary": "btn-primary",
+        "secondary": "btn-secondary",
+        "info": "btn-info",
+        "warning": "btn-warning",
+        "danger": "btn-danger",
+        "success": "btn-success"
+    }
+}
