@@ -29,7 +29,8 @@ class AcademicResourceViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         queryset = AcademicResource.objects.filter(
-            is_approved=True
+            is_approved=True,
+            is_active=True  # Only show active resources
         ).select_related(
             'subject', 
             'subject__scheme',
@@ -42,6 +43,7 @@ class AcademicResourceViewSet(viewsets.ReadOnlyModelViewSet):
         subject_id = self.request.query_params.get('subject')
         semester = self.request.query_params.get('semester')
         search = self.request.query_params.get('search')
+        module_number = self.request.query_params.get('module_number')
         
         if category:
             queryset = queryset.filter(category=category)
@@ -56,6 +58,13 @@ class AcademicResourceViewSet(viewsets.ReadOnlyModelViewSet):
             try:
                 semester = int(semester)
                 queryset = queryset.filter(subject__semester=semester)
+            except (ValueError, TypeError):
+                pass
+        
+        if module_number:
+            try:
+                module_number = int(module_number)
+                queryset = queryset.filter(module_number=module_number)
             except (ValueError, TypeError):
                 pass
         
@@ -262,7 +271,8 @@ def category_detail(request, category_type):
 def academic_resources_list(request):
     """List academic resources with filtering"""
     resources = AcademicResource.objects.filter(
-        is_approved=True
+        is_approved=True,
+        is_active=True  # Only show active resources
     ).select_related(
         'subject',
         'subject__scheme',
@@ -275,6 +285,7 @@ def academic_resources_list(request):
     subject_id = request.GET.get('subject')
     semester = request.GET.get('semester')
     search = request.GET.get('search')
+    module_number = request.GET.get('module_number')
     
     if category:
         resources = resources.filter(category=category)
@@ -292,6 +303,16 @@ def academic_resources_list(request):
         except (ValueError, TypeError):
             return Response(
                 {'error': 'Invalid semester value'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    if module_number:
+        try:
+            module_number = int(module_number)
+            resources = resources.filter(module_number=module_number)
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'Invalid module_number value'},
                 status=status.HTTP_400_BAD_REQUEST
             )
     
@@ -445,7 +466,8 @@ def toggle_resource_like(request, pk):
         with transaction.atomic():
             resource = AcademicResource.objects.select_for_update().get(
                 pk=pk, 
-                is_approved=True
+                is_approved=True,
+                is_active=True
             )
             ip = get_client_ip(request)
             
@@ -503,7 +525,7 @@ def academic_resource_detail(request, pk):
             'subject',
             'subject__scheme',
             'uploaded_by'
-        ).get(pk=pk, is_approved=True)
+        ).get(pk=pk, is_approved=True, is_active=True)
         
         # Check if the current IP has liked this resource
         ip = get_client_ip(request)
@@ -563,7 +585,7 @@ def upload_academic_resource(request):
 def get_resource_stats(request, pk):
     """Get resource statistics (likes, downloads) for real-time updates"""
     try:
-        resource = AcademicResource.objects.get(pk=pk, is_approved=True)
+        resource = AcademicResource.objects.get(pk=pk, is_approved=True, is_active=True)
         ip = get_client_ip(request)
         is_liked = check_if_liked(pk, ip)
         
@@ -585,7 +607,7 @@ def download_academic_resource(request, pk):
     """Download academic resource file and increment counter"""
     try:
         with transaction.atomic():
-            resource = AcademicResource.objects.get(pk=pk, is_approved=True)
+            resource = AcademicResource.objects.get(pk=pk, is_approved=True, is_active=True)
             
             if not resource.file:
                 return Response({'error': 'File not found'}, status=status.HTTP_404_NOT_FOUND)

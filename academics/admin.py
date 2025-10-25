@@ -44,7 +44,7 @@ class SubjectAdmin(admin.ModelAdmin):
 class AcademicResourceAdmin(admin.ModelAdmin):
     list_display = [
         'title', 'category_badge', 'subject_info', 'module_badge',
-        'uploaded_by', 'approval_status', 'is_approved', 'stats_display', 'created_at', 'file_link'
+        'uploaded_by', 'approval_status', 'active_status', 'is_approved', 'is_active', 'stats_display', 'created_at', 'file_link'
     ]
     list_filter = [
         'category', 'subject__scheme', 'subject__department',
@@ -54,7 +54,7 @@ class AcademicResourceAdmin(admin.ModelAdmin):
         'title', 'description', 'subject__name',
         'subject__code', 'uploaded_by__username'
     ]
-    list_editable = ['is_approved']
+    list_editable = ['is_approved', 'is_active']
     readonly_fields = [
         'uploaded_by', 'approved_by', 'file_size', 'download_count',
         'like_count', 'created_at', 'file_preview'
@@ -148,6 +148,18 @@ class AcademicResourceAdmin(admin.ModelAdmin):
         return format_html('<span style="color: #e74c3c; font-weight: bold;">⏳ Pending</span>')
     approval_status.short_description = 'Status'
     approval_status.admin_order_field = 'is_approved'
+    
+    def active_status(self, obj):
+        """Display active/inactive status with colored badge"""
+        if obj.is_active:
+            return format_html(
+                '<span style="background-color: #27ae60; color: white; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: bold;">🟢 ACTIVE</span>'
+            )
+        return format_html(
+            '<span style="background-color: #e74c3c; color: white; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: bold;">🔴 INACTIVE</span>'
+        )
+    active_status.short_description = 'Visibility'
+    active_status.admin_order_field = 'is_active'
     
     def stats_display(self, obj):
         """Display download and like statistics"""
