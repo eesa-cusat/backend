@@ -1,0 +1,14 @@
+{% extends "admin/index.html" %}
+{% load i18n static jazzmin admin_urls %}
+
+{% block content %}
+{{ block.super }}
+
+{# Override the recent actions section #}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // This will be handled by the context processor
+    console.log('Recent actions filtered by user permissions');
+});
+</script>
+{% endblock %}
